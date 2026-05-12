@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}百貨店明細取込 · アップロード{% endblock %}
+{% block content %}
+<nav class="text-sm text-stone-500 mb-3"><a href="/" class="hover:underline">← ダッシュボード</a></nav>
+<h1 class="text-2xl font-bold mb-1">百貨店明細取込</h1>
+<p class="text-stone-500 text-sm mb-6">写真を撮影・選択してアップロードすると、Claude Vision が抽出します。</p>
+
+<form action="/tasks/dept-store-invoice/extract" method="post" enctype="multipart/form-data"
+      class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 space-y-5">
+
+  <div>
+    <label class="block text-sm font-medium text-stone-700 mb-1">取引先</label>
+    <select name="vendor" required class="w-full rounded-lg border-stone-300 border px-3 py-2 bg-white">
+      {% for slug, name in vendors.items() %}
+        <option value="{{ slug }}">{{ name }} ({{ slug }})</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-sm font-medium text-stone-700 mb-1">対象月 (YYYY-MM)</label>
+    <input type="text" name="period_yyyymm" required pattern="\d{4}-\d{2}"
+           placeholder="2026-03"
+           class="w-full rounded-lg border-stone-300 border px-3 py-2">
+  </div>
+
+  <div>
+    <label class="block text-sm font-medium text-stone-700 mb-1">明細写真（複数可）</label>
+    <input type="file" name="files" required multiple accept="image/*"
+           class="block w-full text-sm text-stone-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-stone-100 file:text-stone-700 hover:file:bg-stone-200">
+    <p class="text-xs text-stone-400 mt-1">iPhone Safari: 「写真を撮る / フォトライブラリ」から選択できます。HEIC も可。</p>
+  </div>
+
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="dry_run" value="true" {% if dry_run %}checked{% endif %} class="rounded">
+    <span>dry-run（freee に登録せずプレビューのみ）</span>
+  </label>
+
+  <div class="flex gap-3 pt-2">
+    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
+      アップロードして抽出
+    </button>
+    <a href="/" class="px-4 py-2 rounded-lg border border-stone-300 text-sm text-stone-600 hover:bg-stone-100">キャンセル</a>
+  </div>
+</form>
+{% endblock %}

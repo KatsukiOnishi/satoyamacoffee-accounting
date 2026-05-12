@@ -18,12 +18,23 @@ dependencies = [
     "pydantic-settings>=2.2",
     "pdfplumber>=0.11",
     "openpyxl>=3.1",
+    "anthropic>=0.40",
+    "Pillow>=10.0",
+    "pillow-heif>=0.16",
+    "rich>=13.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "qrcode>=7.4",
+    "itsdangerous>=2.2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
     "ruff>=0.5",
 ]
 

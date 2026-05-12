@@ -39,6 +39,18 @@ class RunReport:
     def add_warning(self, item: Any, reason: str) -> None:
         self.warnings.append(_Entry(item=item, detail=reason))
 
+    @property
+    def success_count(self) -> int:
+        return len(self.successes)
+
+    @property
+    def failure_count(self) -> int:
+        return len(self.failures)
+
+    @property
+    def warning_count(self) -> int:
+        return len(self.warnings)
+
     def as_summary(self) -> dict[str, Any]:
         return {
             "success_count": len(self.successes),
@@ -63,3 +75,8 @@ class RunReport:
 
 def new_report(task: str) -> RunReport:
     return RunReport(task=task, run_id=make_run_id(task))
+
+
+# 別名（タスク側の好みに合わせて両方提供する）
+def generate_run_id(task: str) -> str:
+    return make_run_id(task)

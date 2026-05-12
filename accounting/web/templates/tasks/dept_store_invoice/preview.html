@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}百貨店明細取込 · プレビュー{% endblock %}
+{% block content %}
+<nav class="text-sm text-stone-500 mb-3"><a href="/" class="hover:underline">← ダッシュボード</a></nav>
+<h1 class="text-2xl font-bold mb-1">抽出結果のプレビュー</h1>
+<p class="text-stone-500 text-sm mb-6">内容を確認してから freee に登録してください。</p>
+
+{% if warnings %}
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
+    <p class="text-sm font-medium text-amber-800 mb-1">⚠ 警告</p>
+    <ul class="text-sm text-amber-700 list-disc pl-5 space-y-0.5">
+      {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 mb-5">
+  <h2 class="text-lg font-semibold mb-3">抽出結果</h2>
+  <dl class="grid grid-cols-2 gap-y-2 text-sm">
+    <dt class="text-stone-500">取引先</dt><dd class="text-right">{{ stmt.vendor_name }}</dd>
+    <dt class="text-stone-500">登録番号</dt><dd class="text-right font-mono">{{ stmt.vendor_registration_number or "(なし)" }}</dd>
+    <dt class="text-stone-500">期間</dt><dd class="text-right">{{ stmt.period_start }} 〜 {{ stmt.period_end }}</dd>
+    <dt class="text-stone-500">発行日</dt><dd class="text-right">{{ stmt.issued_date }}</dd>
+    <dt class="text-stone-500">お支払日</dt><dd class="text-right">{{ stmt.payment_date }}</dd>
+    <dt class="text-stone-500">売価</dt><dd class="text-right font-mono">{{ "{:,}".format(stmt.gross_sales) }}</dd>
+    <dt class="text-stone-500">仕入額合計A</dt><dd class="text-right font-mono">{% if stmt.purchase_total is not none %}{{ "{:,}".format(stmt.purchase_total) }}{% else %}(なし){% endif %}</dd>
+    <dt class="text-stone-500">振込額C</dt><dd class="text-right font-mono">{{ "{:,}".format(stmt.transfer_amount) }}</dd>
+    <dt class="text-stone-500 font-medium">差額（支払手数料）</dt><dd class="text-right font-mono font-medium">{{ "{:,}".format(stmt.gross_sales - stmt.transfer_amount) }}</dd>
+  </dl>
+</section>
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 mb-5">
+  <h2 class="text-lg font-semibold mb-1">freee 仕訳プレビュー</h2>
+  <p class="text-xs text-stone-500 mb-3 font-mono">
+    issue_date={{ payload.issue_date }} · external_id={{ external_id }}
+  </p>
+  <table class="w-full text-sm">
+    <thead class="text-xs text-stone-500 border-b border-stone-200">
+      <tr>
+        <th class="text-left py-1">勘定科目ID</th>
+        <th class="text-left">方向</th>
+        <th class="text-right">金額</th>
+        <th class="text-left pl-3">摘要</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in payload.details %}
+        <tr class="border-b border-stone-100 last:border-0">
+          <td class="py-1.5 font-mono">{{ d.account_item_id }}</td>
+          <td>{% if d.entry_side == "debit" %}<span class="text-emerald-700">借方</span>{% else %}<span class="text-sky-700">貸方</span>{% endif %}</td>
+          <td class="text-right font-mono">{{ "{:,}".format(d.amount) }}</td>
+          <td class="pl-3 text-stone-600">{{ d.description }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<form action="/tasks/dept-store-invoice/register" method="post"
+      class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 flex flex-col gap-4">
+  <input type="hidden" name="extraction_id" value="{{ extraction_id }}">
+
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="dry_run" value="true" {% if dry_run %}checked{% endif %} class="rounded">
+    <span>dry-run（freee に登録せずプレビューのみ）</span>
+  </label>
+
+  <div class="flex gap-3">
+    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
+      この内容で freee に登録
+    </button>
+    <a href="/tasks/dept-store-invoice/upload" class="px-4 py-2 rounded-lg border border-stone-300 text-sm text-stone-600 hover:bg-stone-100">やり直す</a>
+  </div>
+</form>
+{% endblock %}

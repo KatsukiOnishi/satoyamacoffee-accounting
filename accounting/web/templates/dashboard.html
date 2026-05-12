@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード · さとやまコーヒー 月次決算ハブ{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-1">月次決算タスク</h1>
+<p class="text-stone-500 text-sm mb-6">操作したいタスクを選んでください。</p>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  {% for task in tasks %}
+    <a href="{{ task.href }}" class="group block bg-white rounded-2xl shadow-sm border border-stone-200 p-5 hover:shadow-md hover:border-stone-300 transition">
+      <div class="flex items-start justify-between">
+        <h2 class="text-lg font-semibold group-hover:text-stone-900">{{ task.title }}</h2>
+        {% if task.badge %}
+          <span class="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">{{ task.badge }}</span>
+        {% endif %}
+      </div>
+      <p class="text-stone-500 text-sm mt-2 leading-relaxed">{{ task.description }}</p>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}
