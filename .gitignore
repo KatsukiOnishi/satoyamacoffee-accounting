@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+accounting.db
+accounting.db-journal
+logs/*.jsonl
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
