@@ -277,6 +277,73 @@ def journal_rules_delete(
     typer.echo(f"✓ matcher_id={matcher_id} を削除しました")
 
 
+@journal_rules_app.command("update")
+def journal_rules_update(
+    account_filter: str = typer.Option(
+        None, "--account-filter", help="account_item_name でフィルタ（例: '売上高'）"
+    ),
+    entry_side_filter: str = typer.Option(
+        None, "--entry-side", help="income / expense で絞る"
+    ),
+    new_act: int = typer.Option(
+        None, "--new-act", help="新しい act 値（0=manual_standard, 1=auto_standard）"
+    ),
+    new_account: str = typer.Option(
+        None, "--new-account", help="新しい account_item_name（例: '売上高' → '売掛金'）"
+    ),
+    new_tax: str = typer.Option(None, "--new-tax", help="新しい tax_name"),
+    min_occurrence: int = typer.Option(
+        None,
+        "--min-occurrence",
+        help="CSV の occurrence がこの値以上のルールのみ更新",
+    ),
+    csv_path: Path = typer.Option(
+        Path("rule_candidates.csv"),
+        "--csv",
+        help="--min-occurrence 使用時に必要",
+    ),
+    exclude_id: list[int] = typer.Option(
+        [],
+        "--exclude-id",
+        help="このIDを更新対象から除外する（複数指定可: --exclude-id 1 --exclude-id 2）",
+    ),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+    interactive: bool = typer.Option(True, "--interactive/--no-interactive"),
+) -> None:
+    """freee 上の既存自動仕訳ルールを一括更新する。
+
+    例:
+      # 売上高ルールを全部 act=1（自動登録）+ account_item="売掛金" に変更
+      accounting journal-rules update --account-filter 売上高 --new-act 1 --new-account 売掛金 --no-dry-run --no-interactive
+
+      # 出現10回以上の支出ルールを act=1 に変更
+      accounting journal-rules update --entry-side expense --min-occurrence 10 --new-act 1 --no-dry-run --no-interactive
+    """
+    from accounting.connectors.freee import FreeeClient
+    from accounting.core.dry_run import DryRunContext
+    from accounting.tasks.journal_rules import bulk_update_rules
+
+    with DryRunContext(dry_run):
+        with FreeeClient() as freee:
+            result = bulk_update_rules(
+                freee,
+                account_filter=account_filter,
+                new_act=new_act,
+                new_account_item_name=new_account,
+                new_tax_name=new_tax,
+                entry_side_filter=entry_side_filter,
+                min_occurrence_filter=min_occurrence,
+                csv_path=csv_path if csv_path.exists() else None,
+                exclude_ids=exclude_id if exclude_id else None,
+                interactive=interactive,
+            )
+    typer.echo(
+        f"更新: {len(result['updated'])} / スキップ: {len(result['skipped'])} / 失敗: {len(result['failed'])}"
+    )
+    if dry_run:
+        typer.echo("[dry-run] freee には何も書き込んでいません。--no-dry-run で本番更新。")
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option(

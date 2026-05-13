@@ -489,6 +489,127 @@ CSV_FIELDS = [
 ]
 
 
+def bulk_update_rules(
+    freee: Any,
+    *,
+    account_filter: str | None = None,
+    new_act: int | None = None,
+    new_account_item_name: str | None = None,
+    new_tax_name: str | None = None,
+    entry_side_filter: str | None = None,
+    min_occurrence_filter: int | None = None,
+    csv_path: Path | None = None,
+    exclude_ids: list[int] | None = None,
+    interactive: bool = True,
+    console: Any = None,
+) -> dict[str, list]:
+    """freee 上の既存 user_matchers を一括更新する。
+
+    Args:
+        freee: FreeeClient
+        account_filter: account_item_name で対象を絞る（例: "売上高"）
+        new_act: 新しい act 値（0=manual, 1=auto）
+        new_account_item_name: 勘定科目を変更（例: "売上高" → "売掛金"）
+        new_tax_name: 税区分を変更
+        entry_side_filter: "income" / "expense" で絞る
+        min_occurrence_filter: CSV と join して occurrence >= 閾値 のものだけ対象
+        csv_path: min_occurrence_filter 使用時に必要（rule_candidates.csv）
+        interactive: True なら1件ずつ y/n 確認
+        console: rich.Console
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    log = get_logger("journal_rules")
+    console = console or Console()
+
+    matchers = freee.list_user_matchers()
+    log.info("journal_rules.update.fetched", total=len(matchers))
+
+    occurrence_map: dict[tuple[str, str], int] = {}
+    if min_occurrence_filter is not None:
+        if not csv_path or not csv_path.exists():
+            raise ValueError("--min-occurrence 使用時は --csv で rule_candidates.csv を指定する必要があります")
+        with csv_path.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                key = (row["keyword"], row["entry_side_str"])
+                occurrence_map[key] = max(occurrence_map.get(key, 0), int(row.get("occurrence", 0)))
+
+    exclude_set = set(exclude_ids or [])
+    targets: list[dict] = []
+    for m in matchers:
+        if m.get("id") in exclude_set:
+            continue
+        if account_filter and m.get("account_item_name") != account_filter:
+            continue
+        if entry_side_filter and m.get("entry_side_str") != entry_side_filter:
+            continue
+        if min_occurrence_filter is not None:
+            occ = occurrence_map.get((m.get("description", ""), m.get("entry_side_str", "")), 0)
+            if occ < min_occurrence_filter:
+                continue
+        targets.append(m)
+
+    log.info("journal_rules.update.filtered", targets=len(targets))
+
+    updated: list = []
+    skipped: list = []
+    failed: list = []
+
+    for m in targets:
+        # 既存値を維持しつつ、変更フィールドを上書き
+        payload: dict[str, Any] = {}
+        for k in (
+            "act",
+            "active",
+            "condition",
+            "description",
+            "entry_side_str",
+            "priority",
+            "account_item_name",
+            "tax_name",
+            "partner_name",
+            "min_amount",
+            "max_amount",
+        ):
+            if m.get(k) is not None:
+                payload[k] = m[k]
+        if new_act is not None:
+            payload["act"] = new_act
+        if new_account_item_name is not None:
+            payload["account_item_name"] = new_account_item_name
+        if new_tax_name is not None:
+            payload["tax_name"] = new_tax_name
+
+        if interactive:
+            t = Table(title=f"更新候補 (matcher_id={m.get('id')})", show_header=True)
+            t.add_column("項目"); t.add_column("現在"); t.add_column("変更後")
+            t.add_row("description", str(m.get("description")), str(payload.get("description")))
+            t.add_row("entry_side_str", str(m.get("entry_side_str")), str(payload.get("entry_side_str")))
+            t.add_row("act", str(m.get("act")), str(payload.get("act")))
+            t.add_row("account_item_name", str(m.get("account_item_name")), str(payload.get("account_item_name")))
+            t.add_row("tax_name", str(m.get("tax_name")), str(payload.get("tax_name")))
+            console.print(t)
+            try:
+                ans = input("更新しますか？ [y/N]: ").strip().lower()
+            except EOFError:
+                ans = "n"
+            if ans not in ("y", "yes"):
+                skipped.append({"id": m.get("id"), "reason": "user_skipped"})
+                continue
+
+        try:
+            result = freee.update_user_matcher(m["id"], payload)
+            updated.append({"id": m.get("id"), "result": result})
+            log.info("journal_rules.update.applied", matcher_id=m.get("id"))
+        except Exception as e:
+            log.exception("journal_rules.update.failed", matcher_id=m.get("id"), error=str(e))
+            failed.append({"id": m.get("id"), "error": str(e)})
+
+    return {"updated": updated, "skipped": skipped, "failed": failed}
+
+
 def candidates_to_csv(candidates: list[RuleCandidate], path: Path) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=CSV_FIELDS)

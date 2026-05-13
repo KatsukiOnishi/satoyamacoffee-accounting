@@ -264,7 +264,16 @@ class FreeeClient:
         url = f"{self.base_url}/api/1/user_matchers"
         params = {"company_id": self.company_id}
         res = self._client.post(url, params=params, json=payload, headers=self._headers())
-        res.raise_for_status()
+        if not res.is_success:
+            logger.error(
+                "freee.user_matcher.api_error",
+                task=task,
+                external_id=external_id,
+                status=res.status_code,
+                response_body=res.text,
+                payload=payload,
+            )
+            res.raise_for_status()
         data = res.json()
         matcher_id = data.get("id") or data.get("user_matcher", {}).get("id")
         logger.info(
@@ -274,6 +283,39 @@ class FreeeClient:
             matcher_id=matcher_id,
         )
         return {"id": matcher_id, "raw": data, "external_id": external_id}
+
+    def update_user_matcher(
+        self, matcher_id: int, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """既存の自動仕訳ルールを更新する。dry-run なら payload ログ出力のみ。
+
+        freee API 仕様により、PUT 時は act/active/condition/description/entry_side_str/
+        priority/account_item_name/tax_name など必須フィールドを再送する必要がある。
+        呼び出し側で既存値とマージした payload を渡すこと。
+        """
+        if is_dry_run():
+            logger.info(
+                "freee.user_matcher.update_dry_run",
+                matcher_id=matcher_id,
+                payload=payload,
+            )
+            return {"dry_run": True, "matcher_id": matcher_id}
+
+        url = f"{self.base_url}/api/1/user_matchers/{matcher_id}"
+        params = {"company_id": self.company_id}
+        res = self._client.put(url, params=params, json=payload, headers=self._headers())
+        if not res.is_success:
+            logger.error(
+                "freee.user_matcher.update_api_error",
+                matcher_id=matcher_id,
+                status=res.status_code,
+                response_body=res.text,
+                payload=payload,
+            )
+            res.raise_for_status()
+        data = res.json()
+        logger.info("freee.user_matcher.updated", matcher_id=matcher_id)
+        return {"id": matcher_id, "raw": data}
 
     def delete_user_matcher(self, matcher_id: int) -> None:
         """自動仕訳ルールを削除する。dry-run でも実 API は叩かない。"""
