@@ -107,3 +107,181 @@ class FreeeClient:
         res = self._client.get(url, params=params, headers=self._headers())
         res.raise_for_status()
         return res.json().get("account_items", [])
+
+    # ---- 月次決算ハブが必要とする読み取り系 / user_matchers 系 ----
+
+    def list_deals(
+        self,
+        *,
+        start_issue_date: str,
+        end_issue_date: str,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """確定済み取引を期間指定で全件取得（自動ページング）。
+
+        Args:
+            start_issue_date / end_issue_date: YYYY-MM-DD
+            page_size: 1ページの件数（freee 上限 100）
+
+        Returns: 全 deals のフラットリスト（details 込み）
+        """
+        url = f"{self.base_url}/api/1/deals"
+        all_deals: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            params = {
+                "company_id": self.company_id,
+                "start_issue_date": start_issue_date,
+                "end_issue_date": end_issue_date,
+                "limit": page_size,
+                "offset": offset,
+                "accruals": "with",
+            }
+            res = self._client.get(url, params=params, headers=self._headers())
+            res.raise_for_status()
+            chunk = res.json().get("deals", [])
+            all_deals.extend(chunk)
+            logger.info(
+                "freee.list_deals.page",
+                offset=offset,
+                returned=len(chunk),
+                total=len(all_deals),
+            )
+            if len(chunk) < page_size:
+                break
+            offset += page_size
+        return all_deals
+
+    def list_partners(
+        self,
+        *,
+        page_size: int = 100,
+        keyword: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """取引先一覧（自動ページング）。"""
+        url = f"{self.base_url}/api/1/partners"
+        all_partners: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            params: dict[str, Any] = {
+                "company_id": self.company_id,
+                "limit": page_size,
+                "offset": offset,
+            }
+            if keyword:
+                params["keyword"] = keyword
+            res = self._client.get(url, params=params, headers=self._headers())
+            res.raise_for_status()
+            chunk = res.json().get("partners", [])
+            all_partners.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            offset += page_size
+        return all_partners
+
+    def list_walletables(self, *, walletable_type: str | None = None) -> list[dict[str, Any]]:
+        """口座一覧（銀行/クレジットカード/その他）。"""
+        url = f"{self.base_url}/api/1/walletables"
+        params: dict[str, Any] = {"company_id": self.company_id}
+        if walletable_type:
+            params["type"] = walletable_type
+        res = self._client.get(url, params=params, headers=self._headers())
+        res.raise_for_status()
+        return res.json().get("walletables", [])
+
+    def list_wallet_txns(
+        self,
+        *,
+        walletable_type: str | None = None,
+        walletable_id: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """口座明細を取得（ページング自動処理）。
+
+        walletable_type と walletable_id は同時指定が必須（freee 仕様）。
+        指定しない場合は事業所全口座を対象とする。
+        """
+        url = f"{self.base_url}/api/1/wallet_txns"
+        all_txns: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            params: dict[str, Any] = {
+                "company_id": self.company_id,
+                "limit": page_size,
+                "offset": offset,
+            }
+            if walletable_type and walletable_id is not None:
+                params["walletable_type"] = walletable_type
+                params["walletable_id"] = walletable_id
+            if start_date:
+                params["start_date"] = start_date
+            if end_date:
+                params["end_date"] = end_date
+            res = self._client.get(url, params=params, headers=self._headers())
+            res.raise_for_status()
+            chunk = res.json().get("wallet_txns", [])
+            all_txns.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            offset += page_size
+        return all_txns
+
+    def list_user_matchers(self, *, page_size: int = 100) -> list[dict[str, Any]]:
+        """自動仕訳ルール一覧（自動ページング、全 act 対象）。"""
+        url = f"{self.base_url}/api/1/user_matchers"
+        all_items: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            params = {
+                "company_id": self.company_id,
+                "limit": page_size,
+                "offset": offset,
+            }
+            res = self._client.get(url, params=params, headers=self._headers())
+            res.raise_for_status()
+            chunk = res.json().get("data", [])
+            all_items.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            offset += page_size
+        return all_items
+
+    def create_user_matcher(
+        self, payload: dict[str, Any], external_id: str, task: str
+    ) -> dict[str, Any]:
+        """自動仕訳ルールを作成する。dry-run なら payload ログ出力のみ。"""
+        if is_dry_run():
+            logger.info(
+                "freee.user_matcher.dry_run",
+                task=task,
+                external_id=external_id,
+                payload=payload,
+            )
+            return {"dry_run": True, "external_id": external_id}
+
+        url = f"{self.base_url}/api/1/user_matchers"
+        params = {"company_id": self.company_id}
+        res = self._client.post(url, params=params, json=payload, headers=self._headers())
+        res.raise_for_status()
+        data = res.json()
+        matcher_id = data.get("id") or data.get("user_matcher", {}).get("id")
+        logger.info(
+            "freee.user_matcher.created",
+            task=task,
+            external_id=external_id,
+            matcher_id=matcher_id,
+        )
+        return {"id": matcher_id, "raw": data, "external_id": external_id}
+
+    def delete_user_matcher(self, matcher_id: int) -> None:
+        """自動仕訳ルールを削除する。dry-run でも実 API は叩かない。"""
+        if is_dry_run():
+            logger.info("freee.user_matcher.delete_dry_run", matcher_id=matcher_id)
+            return
+        url = f"{self.base_url}/api/1/user_matchers/{matcher_id}"
+        params = {"company_id": self.company_id}
+        res = self._client.delete(url, params=params, headers=self._headers())
+        res.raise_for_status()
+        logger.info("freee.user_matcher.deleted", matcher_id=matcher_id)
