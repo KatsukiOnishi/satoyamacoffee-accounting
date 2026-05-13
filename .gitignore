@@ -14,3 +14,7 @@ logs/*.jsonl
 *.egg-info/
 dist/
 build/
+
+# Analysis outputs
+rule_candidates.csv
+rule_candidates.csv.bak
