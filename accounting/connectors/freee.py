@@ -18,6 +18,13 @@ class FreeeClient:
 
     冪等性チェック（is_executed / mark_executed）は呼び出し側のタスクで管理する。
     本クラスは「実APIコール + dry-run のスキップ + レスポンス返却」に専念する。
+
+    認証: `accounting.core.freee_auth.get_access_token()` 経由で動的にトークン取得。
+    期限切れ間近なら自動で refresh される。さらに 401 を受けたら一度だけ
+    force_refresh して retry する（保険）。
+
+    後方互換: secrets/freee_tokens.json 不在（bootstrap 未完了）の場合は、
+    `settings.freee_api_key` を使う旧挙動にフォールバック。
     """
 
     def __init__(
@@ -27,18 +34,89 @@ class FreeeClient:
         base_url: str = FREEE_API_BASE,
         timeout: float = 30.0,
     ) -> None:
-        self.api_key = api_key or settings.freee_api_key
+        # 明示的に渡された api_key があればそれを使う（テストでの上書き等）。
+        # None なら OAuthManager → settings.freee_api_key の順で動的解決。
+        self._explicit_api_key = api_key
         self.company_id = company_id or settings.freee_company_id
         self.base_url = base_url
         self._client = httpx.Client(timeout=timeout)
 
+    @property
+    def api_key(self) -> str:
+        """現在の access_token を返す（後方互換用プロパティ）。
+
+        通常は `_headers()` が直接 get_access_token を呼ぶので、これに依存しない。
+        """
+        return self._resolve_access_token()
+
+    def _resolve_access_token(self) -> str:
+        if self._explicit_api_key is not None:
+            return self._explicit_api_key
+        # 動的解決
+        from accounting.core.freee_auth import (
+            FreeeBootstrapRequiredError,
+            get_access_token,
+        )
+
+        try:
+            return get_access_token()
+        except FreeeBootstrapRequiredError:
+            # bootstrap 未完了: settings.freee_api_key にフォールバック
+            return settings.freee_api_key
+
     def _headers(self) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {self._resolve_access_token()}",
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-Api-Version": "2020-06-15",
         }
+
+    def _request(
+        self, method: str, url: str, **kwargs: Any
+    ) -> httpx.Response:
+        """全 freee API 呼び出しの共通エントリポイント。
+
+        - 都度 `_headers()` を構築 → 最新の access_token を反映
+        - 401 を受けたら一度だけ force_refresh して retry（保険）
+        - 二度目も 401 ならそのまま返す（呼び出し側で raise_for_status）
+        """
+        resp = self._client.request(method, url, headers=self._headers(), **kwargs)
+        if resp.status_code == 401 and self._explicit_api_key is None:
+            from accounting.core.freee_auth import (
+                FreeeAuthError,
+                FreeeBootstrapRequiredError,
+                FreeeRefreshTokenInvalidError,
+                build_authorize_url,
+                force_refresh,
+            )
+
+            logger.warning(
+                "freee.unauthorized_retry",
+                url=url,
+                method=method,
+            )
+            try:
+                force_refresh()
+            except FreeeBootstrapRequiredError:
+                # bootstrap してないのに 401 → そもそも api_key が空 or 不正
+                return resp
+            except FreeeRefreshTokenInvalidError as e:
+                # refresh_token が完全に失効。Resend で再認可案内 → 例外伝播。
+                logger.error("freee.refresh_token_invalid", error=str(e))
+                try:
+                    from accounting.core.notifier import notify_refresh_token_invalid
+
+                    notify_refresh_token_invalid(reauth_url=build_authorize_url())
+                except Exception as notif_err:
+                    logger.error("freee.notify_failed", error=str(notif_err))
+                raise
+            except FreeeAuthError as e:
+                # ネットワークエラーや設定不足。呼び出し側で notify_failure 等が走る前提。
+                logger.error("freee.refresh_failed_on_401", error=str(e))
+                raise
+            resp = self._client.request(method, url, headers=self._headers(), **kwargs)
+        return resp
 
     def close(self) -> None:
         self._client.close()
@@ -63,7 +141,7 @@ class FreeeClient:
 
         url = f"{self.base_url}/api/1/journals"
         body = {"journal": payload}
-        resp = self._client.post(url, json=body, headers=self._headers())
+        resp = self._request("POST", url, json=body)
         resp.raise_for_status()
         data = resp.json()
         journal_id = data.get("journal", {}).get("id")
@@ -89,7 +167,7 @@ class FreeeClient:
 
         url = f"{self.base_url}/api/1/invoices"
         body = {"invoice": payload}
-        resp = self._client.post(url, json=body, headers=self._headers())
+        resp = self._request("POST", url, json=body)
         resp.raise_for_status()
         data = resp.json()
         invoice_id = data.get("invoice", {}).get("id")
@@ -104,7 +182,7 @@ class FreeeClient:
     def get_account_items(self) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/1/account_items"
         params = {"company_id": self.company_id}
-        res = self._client.get(url, params=params, headers=self._headers())
+        res = self._request("GET", url, params=params)
         res.raise_for_status()
         return res.json().get("account_items", [])
 
@@ -137,7 +215,7 @@ class FreeeClient:
                 "offset": offset,
                 "accruals": "with",
             }
-            res = self._client.get(url, params=params, headers=self._headers())
+            res = self._request("GET", url, params=params)
             res.raise_for_status()
             chunk = res.json().get("deals", [])
             all_deals.extend(chunk)
@@ -170,7 +248,7 @@ class FreeeClient:
             }
             if keyword:
                 params["keyword"] = keyword
-            res = self._client.get(url, params=params, headers=self._headers())
+            res = self._request("GET", url, params=params)
             res.raise_for_status()
             chunk = res.json().get("partners", [])
             all_partners.extend(chunk)
@@ -185,7 +263,7 @@ class FreeeClient:
         params: dict[str, Any] = {"company_id": self.company_id}
         if walletable_type:
             params["type"] = walletable_type
-        res = self._client.get(url, params=params, headers=self._headers())
+        res = self._request("GET", url, params=params)
         res.raise_for_status()
         return res.json().get("walletables", [])
 
@@ -219,7 +297,7 @@ class FreeeClient:
                 params["start_date"] = start_date
             if end_date:
                 params["end_date"] = end_date
-            res = self._client.get(url, params=params, headers=self._headers())
+            res = self._request("GET", url, params=params)
             res.raise_for_status()
             chunk = res.json().get("wallet_txns", [])
             all_txns.extend(chunk)
@@ -239,7 +317,7 @@ class FreeeClient:
                 "limit": page_size,
                 "offset": offset,
             }
-            res = self._client.get(url, params=params, headers=self._headers())
+            res = self._request("GET", url, params=params)
             res.raise_for_status()
             chunk = res.json().get("data", [])
             all_items.extend(chunk)
@@ -263,7 +341,7 @@ class FreeeClient:
 
         url = f"{self.base_url}/api/1/user_matchers"
         params = {"company_id": self.company_id}
-        res = self._client.post(url, params=params, json=payload, headers=self._headers())
+        res = self._request("POST", url, params=params, json=payload)
         if not res.is_success:
             logger.error(
                 "freee.user_matcher.api_error",
@@ -303,7 +381,7 @@ class FreeeClient:
 
         url = f"{self.base_url}/api/1/user_matchers/{matcher_id}"
         params = {"company_id": self.company_id}
-        res = self._client.put(url, params=params, json=payload, headers=self._headers())
+        res = self._request("PUT", url, params=params, json=payload)
         if not res.is_success:
             logger.error(
                 "freee.user_matcher.update_api_error",
@@ -324,6 +402,57 @@ class FreeeClient:
             return
         url = f"{self.base_url}/api/1/user_matchers/{matcher_id}"
         params = {"company_id": self.company_id}
-        res = self._client.delete(url, params=params, headers=self._headers())
+        res = self._request("DELETE", url, params=params)
         res.raise_for_status()
         logger.info("freee.user_matcher.deleted", matcher_id=matcher_id)
+
+    # ---- 振替伝票（manual_journals）作成 ----
+
+    def create_manual_journal(
+        self, payload: dict[str, Any], external_id: str, task: str
+    ) -> dict[str, Any]:
+        """振替伝票（manual_journal）を作成する。dry-run なら payload ログ出力のみ。
+
+        freee API: POST /api/1/manual_journals
+        Body は `{"manual_journal": payload}` で wrap する（register_journal と同様の規約）。
+
+        Args:
+            payload: manual_journal 本体（issue_date / company_id / details ほか）
+            external_id: 冪等性管理用 ID（呼び出し側で executed_operations にマーク）
+            task: ロギング用のタスク名
+        """
+        if is_dry_run():
+            logger.info(
+                "freee.manual_journal.dry_run",
+                task=task,
+                external_id=external_id,
+                payload=payload,
+            )
+            return {"dry_run": True, "external_id": external_id}
+
+        url = f"{self.base_url}/api/1/manual_journals"
+        body = {"manual_journal": payload}
+        res = self._request("POST", url, json=body)
+        if not res.is_success:
+            logger.error(
+                "freee.manual_journal.api_error",
+                task=task,
+                external_id=external_id,
+                status=res.status_code,
+                response_body=res.text,
+                payload=payload,
+            )
+            res.raise_for_status()
+        data = res.json()
+        manual_journal_id = data.get("manual_journal", {}).get("id")
+        logger.info(
+            "freee.manual_journal.created",
+            task=task,
+            external_id=external_id,
+            manual_journal_id=manual_journal_id,
+        )
+        return {
+            "manual_journal_id": manual_journal_id,
+            "raw": data,
+            "external_id": external_id,
+        }

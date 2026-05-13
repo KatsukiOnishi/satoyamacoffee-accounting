@@ -1,6 +1,7 @@
 .env
 .venv/
 samples/
+secrets/
 *.heic
 *.HEIC
 __pycache__/

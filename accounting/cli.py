@@ -10,6 +10,7 @@ from accounting.config import settings
 
 app = typer.Typer(help="さとやまコーヒー 月次決算自動化ハブ CLI")
 journal_rules_app = typer.Typer(help="自動仕訳ルール管理（user_matchers API）")
+auth_app = typer.Typer(help="freee OAuth トークン管理（自動 refresh 用）")
 
 
 @app.command()
@@ -89,6 +90,7 @@ def dept_store_invoice(
 
 
 app.add_typer(journal_rules_app, name="journal-rules")
+app.add_typer(auth_app, name="auth")
 
 
 @journal_rules_app.command("analyze")
@@ -344,6 +346,33 @@ def journal_rules_update(
         typer.echo("[dry-run] freee には何も書き込んでいません。--no-dry-run で本番更新。")
 
 
+@app.command("inventory-valuation")
+def inventory_valuation(
+    month: str = typer.Option(..., "--month", help="対象月 YYYY-MM（例: 2026-04）"),
+    amount: Optional[int] = typer.Option(
+        None,
+        "--amount",
+        help="coffee_system を経由せず直接金額を渡す（緊急用、JPY整数）",
+    ),
+    dry_run: bool = typer.Option(
+        settings.dry_run,
+        "--dry-run/--no-dry-run",
+        help="dry-run モード（既定）。本番登録は --no-dry-run を明示",
+    ),
+) -> None:
+    """月次の在庫評価仕訳を freee に登録する。
+
+    前月計上があれば月初に逆仕訳、月末に当月計上の 2 本を作成する。
+    """
+    from accounting.core.dry_run import DryRunContext
+    from accounting.tasks import inventory_valuation as task
+
+    with DryRunContext(dry_run):
+        report = task.run(month=month, amount_override=amount)
+    if report.failure_count > 0:
+        raise typer.Exit(code=1)
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option(
@@ -358,6 +387,114 @@ def serve(
     from accounting.web.server import start_server
 
     start_server(host=host, port=port, open_browser=open_browser)
+
+
+# --------------- auth サブコマンド --------------- #
+
+
+@auth_app.command("init")
+def auth_init(
+    access_token: Optional[str] = typer.Option(
+        None, "--access-token", help="未指定なら対話入力（履歴に残らない hidden prompt）"
+    ),
+    refresh_token: Optional[str] = typer.Option(
+        None, "--refresh-token", help="未指定なら対話入力（hidden prompt）"
+    ),
+    expires_in: int = typer.Option(
+        21600, "--expires-in", help="access_token の有効期限（秒）。freee 標準は 21600"
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="既存トークンファイルを上書きする"
+    ),
+) -> None:
+    """初回 bootstrap: パスワードマネージャから取り出したトークンを保存する。
+
+    例: accounting auth init  # 対話で 2 トークン入力（推奨、シェル履歴に残らない）
+        accounting auth init --access-token X --refresh-token Y
+    """
+    from accounting.core import freee_auth
+
+    token_path = Path(freee_auth._token_file_path())
+    if token_path.exists() and not force:
+        typer.echo(
+            f"既に {token_path} が存在します。上書きするには --force を付けてください。",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not access_token:
+        access_token = typer.prompt("access_token", hide_input=True)
+    if not refresh_token:
+        refresh_token = typer.prompt("refresh_token", hide_input=True)
+
+    if not access_token or not refresh_token:
+        typer.echo("access_token と refresh_token の両方が必要です。", err=True)
+        raise typer.Exit(code=1)
+
+    data = freee_auth.bootstrap(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
+    )
+    typer.echo(f"✓ トークンを保存しました: {token_path}")
+    typer.echo(f"  expires_at: {data['expires_at']}")
+    typer.echo(f"  company_id: {data.get('company_id') or '(未設定)'}")
+    typer.echo(
+        "  以降は accounting コマンドが自動で refresh するので、6時間ごとの再取得は不要です。"
+    )
+
+
+@auth_app.command("status")
+def auth_status() -> None:
+    """現在のトークン状態を表示（マスク済み、残り有効分数）。"""
+    from accounting.core import freee_auth
+
+    s = freee_auth.status()
+    if not s.get("bootstrapped"):
+        typer.echo("✗ bootstrap 未完了")
+        typer.echo(f"  path: {s.get('path')}")
+        typer.echo(f"  理由: {s.get('reason')}")
+        typer.echo("`accounting auth init` で初回投入してください。")
+        raise typer.Exit(code=1)
+
+    typer.echo("✓ bootstrap 済み")
+    typer.echo(f"  path           : {s['path']}")
+    typer.echo(f"  access_token   : {s['access_token_masked']}")
+    typer.echo(f"  refresh_token  : {s['refresh_token_masked']}")
+    typer.echo(f"  obtained_at    : {s.get('obtained_at')}")
+    typer.echo(f"  expires_at     : {s['expires_at']}")
+    typer.echo(
+        f"  remaining      : {s['expires_in_minutes']} 分 ({s['expires_in_seconds']} 秒)"
+    )
+    typer.echo(f"  needs_refresh  : {s['needs_refresh']}")
+    typer.echo(f"  company_id     : {s.get('company_id') or '(未設定)'}")
+
+
+@auth_app.command("refresh")
+def auth_refresh() -> None:
+    """強制的に refresh_token を使って access_token を更新する。
+
+    通常は API 呼び出し時に自動で行われる。デバッグや事前 warm-up 用。
+    """
+    from accounting.core import freee_auth
+
+    try:
+        data = freee_auth.force_refresh()
+    except freee_auth.FreeeBootstrapRequiredError as e:
+        typer.echo(f"✗ bootstrap 未完了: {e}", err=True)
+        raise typer.Exit(code=1)
+    except freee_auth.FreeeRefreshTokenInvalidError as e:
+        typer.echo(f"✗ refresh_token が無効: {e}", err=True)
+        # 失効通知
+        try:
+            from accounting.core.notifier import notify_refresh_token_invalid
+
+            notify_refresh_token_invalid(reauth_url=freee_auth.build_authorize_url())
+        except Exception as notif_err:
+            typer.echo(f"  （通知メールの送信にも失敗: {notif_err}）", err=True)
+        raise typer.Exit(code=2)
+    typer.echo("✓ refresh 完了")
+    typer.echo(f"  expires_at: {data['expires_at']}")
 
 
 if __name__ == "__main__":

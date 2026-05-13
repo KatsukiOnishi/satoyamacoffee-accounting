@@ -54,6 +54,32 @@ def notify_failure(task: str, run_id: str, error: Exception, context: dict[str, 
     _send(subject, "\n".join(body_lines))
 
 
+def notify_refresh_token_invalid(reauth_url: str) -> None:
+    """freee の refresh_token が無効化された時の再認可案内メール。
+
+    呼び出される代表シナリオ:
+      - 90日間 refresh されず失効
+      - 競合で他プロセスが先に消費した（refresh_token は 1 回限り使用可能）
+      - ユーザー側で freee の権限を取り消した
+
+    通知後、人手で `accounting auth init` または再認可フロー実行が必要。
+    """
+    subject = "[satoyamacoffee-accounting] freee refresh_token が無効化されました"
+    body = (
+        "freee API の refresh_token が無効化されました。\n"
+        "月次決算ハブはトークン更新に失敗しています。\n"
+        "\n"
+        "対応:\n"
+        "1. 下記URLをブラウザで開いて再認可\n"
+        f"   {reauth_url}\n"
+        "2. 認可コードを取得 → curl で access_token + refresh_token を取得\n"
+        "3. `accounting auth init --force --access-token X --refresh-token Y` で再投入\n"
+        "\n"
+        "詳細手順はリポジトリの CLAUDE.md（freee API 連携 セクション）を参照。\n"
+    )
+    _send(subject, body)
+
+
 def notify_summary(task: str, run_id: str, summary: dict[str, Any]) -> None:
     if not settings.notify_on_success:
         logger.debug("notifier.summary_skipped", reason="NOTIFY_ON_SUCCESS=false")

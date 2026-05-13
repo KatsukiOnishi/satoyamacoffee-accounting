@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # freee
     freee_api_key: str = Field(default="", alias="FREEE_API_KEY")
     freee_company_id: str = Field(default="", alias="FREEE_COMPANY_ID")
+    # OAuth リフレッシュ用（自動トークン更新で必須）
+    freee_client_id: str = Field(default="", alias="FREEE_CLIENT_ID")
+    freee_client_secret: str = Field(default="", alias="FREEE_CLIENT_SECRET")
+    # トークン保管場所（atomic write 対象、gitignore 配下に置くこと）
+    freee_token_file: str = Field(default="./secrets/freee_tokens.json", alias="FREEE_TOKEN_FILE")
     freee_account_item_inventory: str = Field(default="", alias="FREEE_ACCOUNT_ITEM_INVENTORY")
     freee_account_item_opening_inventory: str = Field(
         default="", alias="FREEE_ACCOUNT_ITEM_OPENING_INVENTORY"
