@@ -35,6 +35,6 @@ def get_session_factory() -> sessionmaker:
 
 def init_db() -> None:
     # 全モデルを import してから create_all する
-    from accounting.core import extractions, idempotency  # noqa: F401
+    from accounting.core import extractions, idempotency, inventory_valuations  # noqa: F401
 
     Base.metadata.create_all(bind=get_engine())
