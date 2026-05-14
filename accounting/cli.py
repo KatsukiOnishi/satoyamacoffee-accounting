@@ -92,6 +92,10 @@ def dept_store_invoice(
 app.add_typer(journal_rules_app, name="journal-rules")
 app.add_typer(auth_app, name="auth")
 
+from accounting.tasks.vendor_invoice import vendor_invoice_app  # noqa: E402
+
+app.add_typer(vendor_invoice_app, name="vendor-invoice")
+
 
 @journal_rules_app.command("analyze")
 def journal_rules_analyze(
@@ -468,6 +472,46 @@ def auth_status() -> None:
     )
     typer.echo(f"  needs_refresh  : {s['needs_refresh']}")
     typer.echo(f"  company_id     : {s.get('company_id') or '(未設定)'}")
+
+
+@auth_app.command("gmail-init")
+def auth_gmail_init() -> None:
+    """Gmail OAuth の初回認可フローを実行する（ブラウザを開いてGoogle承認）。
+
+    事前準備:
+      1. Google Cloud Console でデスクトップアプリ用 OAuth クライアントIDを作成
+      2. ダウンロードした client_secret_xxx.json を secrets/gmail_credentials.json として配置
+    その後このコマンドを実行するとローカルhttpサーバが起動し、ブラウザでGoogle認可画面を開く。
+    認可完了で secrets/gmail_tokens.json が保存され、以降は自動 refresh される。
+    """
+    from accounting.core import gmail_auth
+
+    try:
+        data = gmail_auth.bootstrap_interactive()
+    except gmail_auth.GmailBootstrapRequiredError as e:
+        typer.echo(f"✗ {e}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo("✓ Gmail OAuth 完了")
+    typer.echo(f"  scopes: {data.get('scopes')}")
+    typer.echo("  以降は accounting コマンドが自動で refresh します。")
+
+
+@auth_app.command("gmail-status")
+def auth_gmail_status() -> None:
+    """Gmail OAuth トークンの状態を表示する。"""
+    from accounting.core import gmail_auth
+
+    s = gmail_auth.status()
+    if not s.get("bootstrapped"):
+        typer.echo("✗ Gmail bootstrap 未完了")
+        typer.echo(f"  credentials: {s.get('credentials_path')}")
+        typer.echo(f"  tokens     : {s.get('token_path')}")
+        typer.echo(f"  reason     : {s.get('reason')}")
+        typer.echo("`accounting auth gmail-init` を実行してください。")
+        raise typer.Exit(code=1)
+    typer.echo("✓ Gmail bootstrap 済み")
+    typer.echo(f"  credentials: {s['credentials_path']}")
+    typer.echo(f"  tokens     : {s['token_path']}")
 
 
 @auth_app.command("refresh")

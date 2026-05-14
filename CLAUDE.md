@@ -53,8 +53,12 @@ satoyamacoffee-accounting/
 │   │   ├── coffee_system.py  # （後続）在庫スナップショット取得
 │   │   ├── attendance.py     # （後続）月次給与取得
 │   │   └── shopify.py        # （後続）売上・手数料取得
-│   └── tasks/                # 月次タスク（1ファイル1タスク）
-│       └── ping.py           # 共通基盤の疎通確認用ダミー
+│   └── tasks/                # 月次タスク（1ファイル1タスク 〜 1ディレクトリ1タスク）
+│       ├── ping.py           # 共通基盤の疎通確認用ダミー
+│       ├── dept_store_invoice.py
+│       ├── inventory_valuation.py
+│       ├── journal_rules.py
+│       └── vendor_invoice/   # ベンダー請求書メール取込（Gmail → Vision → freee）
 └── tests/
     └── test_idempotency.py
 ```
@@ -88,6 +92,9 @@ accounting ping --dry-run
 
 - `accounting ping [--dry-run/--no-dry-run]` — 共通基盤の疎通確認
 - `accounting list-accounts` — freee 勘定科目一覧（初期 env 設定の補助）
+- `accounting vendor-invoice scan [--days 30] [--no-dry-run]` — ベンダー請求書メールを Gmail から取込み → freee 取引登録 + 未払金消し込み
+- `accounting vendor-invoice list / apply <id> / reconcile` — 候補一覧・個別承認・振込後の消し込み再試行
+- `accounting auth gmail-init` — Gmail OAuth 初回認可（詳細は `README_vendor_invoice.md`）
 - `pytest` — テスト実行
 
 ## 6. 環境変数
@@ -112,6 +119,24 @@ accounting ping --dry-run
 - **dry-run がデフォルト**: `.env` の `DRY_RUN=true` を前提。本番実行は `--no-dry-run` フラグを明示する。
 - **freee レスポンスを必ず保存**: `freee.register_journal()` の戻り値 `freee_journal_id` は `mark_executed` に渡す。後で freee 側を消す/直す時の手がかりになる。
 - **run_id**: `{task}-{YYYYMMDD-HHMMSS}-{shortuuid}` 形式。ログ・通知・冪等性テーブル全てで同じものを使う。
+
+## 8a. vendor-invoice タスク（ベンダー請求書メール取込）
+
+ベンダーからメールで届く請求書PDFを Gmail から取込み → freee に Dr.費用 / Cr.未払金 の取引として登録し、振込が降りていれば未払金消し込みまで自動化するタスク。
+
+- パッケージ: `accounting/tasks/vendor_invoice/`
+- 候補テーブル: `vendor_invoice_candidates`（`accounting/core/vendor_invoice_candidates.py`）
+- Gmail 認証: `accounting/core/gmail_auth.py`（scope=`gmail.readonly` のみ）
+- 認証バックエンド: `secrets/gmail_credentials.json`（手動配置）+ `secrets/gmail_tokens.json`（auto refresh）
+- 除外リスト: `accounting/tasks/vendor_invoice/blacklists.py`（クレカ自動引落・自社発行・物流スポット等）
+
+### スコープ外
+- クレジットカード自動引落系（Shopify / Anthropic / Slack / お名前.com / freeeカード等）— 「自動で経理」で計上済みのため二重計上回避
+- 輸入・物流スポット（Falcon Coffees, DSV, FedEx 等）— 金額大・条件個別で手動運用
+- 振込実行の自動化 — ユーザーが銀行アプリで手動振込
+
+### ユーザー側準備
+`README_vendor_invoice.md` を参照。Google Cloud Console での OAuth クライアント作成 → `accounting auth gmail-init` で完了。
 
 ## 9. 他リポジトリとの関係
 
