@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     # Anthropic Claude Vision
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
 
+    # Gmail OAuth（vendor-invoice タスクで使用）
+    gmail_credentials_file: str = Field(
+        default="./secrets/gmail_credentials.json", alias="GMAIL_CREDENTIALS_FILE"
+    )
+    gmail_token_file: str = Field(
+        default="./secrets/gmail_tokens.json", alias="GMAIL_TOKEN_FILE"
+    )
+    gmail_user_id: str = Field(default="me", alias="GMAIL_USER_ID")
+    vendor_invoice_attachments_dir: str = Field(
+        default="/tmp/vendor_invoice_attachments",
+        alias="VENDOR_INVOICE_ATTACHMENTS_DIR",
+    )
+
     # 他システム連携
     coffee_system_base_url: str = Field(default="", alias="COFFEE_SYSTEM_BASE_URL")
     coffee_system_api_key: str = Field(default="", alias="COFFEE_SYSTEM_API_KEY")

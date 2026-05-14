@@ -28,6 +28,9 @@ dependencies = [
     "python-multipart>=0.0.9",
     "qrcode>=7.4",
     "itsdangerous>=2.2",
+    "google-api-python-client>=2.140",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
 ]
 
 [project.optional-dependencies]

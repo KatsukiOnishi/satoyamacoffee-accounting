@@ -406,6 +406,52 @@ class FreeeClient:
         res.raise_for_status()
         logger.info("freee.user_matcher.deleted", matcher_id=matcher_id)
 
+    # ---- Deals（取引）作成 ----
+
+    def create_deal(
+        self, payload: dict[str, Any], external_id: str, task: str
+    ) -> dict[str, Any]:
+        """取引（Deal）を作成する。dry-run なら payload ログ出力のみ。
+
+        freee API: POST /api/1/deals
+        Body はラップせず flat に payload を送る（freee 仕様）。
+
+        Args:
+            payload: deal 本体（issue_date / type / company_id / partner_id / details ほか）
+            external_id: 冪等性管理用 ID（呼び出し側で executed_operations にマーク）
+            task: ロギング用のタスク名
+        """
+        if is_dry_run():
+            logger.info(
+                "freee.deal.dry_run",
+                task=task,
+                external_id=external_id,
+                payload=payload,
+            )
+            return {"dry_run": True, "external_id": external_id}
+
+        url = f"{self.base_url}/api/1/deals"
+        res = self._request("POST", url, json=payload)
+        if not res.is_success:
+            logger.error(
+                "freee.deal.api_error",
+                task=task,
+                external_id=external_id,
+                status=res.status_code,
+                response_body=res.text[:1000],
+                payload=payload,
+            )
+            res.raise_for_status()
+        data = res.json()
+        deal_id = (data.get("deal") or {}).get("id") or data.get("id")
+        logger.info(
+            "freee.deal.created",
+            task=task,
+            external_id=external_id,
+            deal_id=deal_id,
+        )
+        return {"deal_id": deal_id, "raw": data, "external_id": external_id}
+
     # ---- 振替伝票（manual_journals）作成 ----
 
     def create_manual_journal(
