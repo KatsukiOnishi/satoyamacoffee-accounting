@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 def _bool(value: str | bool | None) -> bool:

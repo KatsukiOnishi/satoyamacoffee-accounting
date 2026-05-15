@@ -74,7 +74,7 @@ EXCLUDED_DOMAINS: set[str] = {
 KNOWN_BANK_TRANSFER_VENDORS: dict[str, KnownVendorInfo] = {
     "management@psi-coffee.com": {
         "partner_name_hint": "株式会社ピーエスアイ",
-        "default_account_item": "外注加工費",
+        "default_account_item": "外注費",
     },
     "invoice.myzktax@outlook.jp": {
         "partner_name_hint": "宮﨑会計事務所",

@@ -16,7 +16,7 @@ from accounting.core.logger import get_logger
 
 logger = get_logger("vendor_invoice.account_resolver")
 
-DEFAULT_FALLBACK_ACCOUNT_ITEM_NAME = "外注加工費"
+DEFAULT_FALLBACK_ACCOUNT_ITEM_NAME = "外注費"
 
 
 @dataclass
