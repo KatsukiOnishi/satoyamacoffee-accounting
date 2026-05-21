@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}ベンダー請求書取込 · 候補一覧{% endblock %}
+{% block content %}
+<nav class="text-sm text-stone-500 mb-3"><a href="/" class="hover:underline">← ダッシュボード</a></nav>
+<h1 class="text-2xl font-bold mb-1">ベンダー請求書取込</h1>
+<p class="text-stone-500 text-sm mb-6">Gmail から取込んだ請求書の候補を確認し、freee に登録します。</p>
+
+{% if request.query_params.get("scan_started") %}
+  <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-sm text-emerald-800">
+    🌀 Gmail スキャンをバックグラウンドで開始しました。数分後にこのページをリロードしてください。
+  </div>
+{% endif %}
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-4 mb-5">
+  <div class="flex flex-wrap items-center gap-3">
+    <form action="/tasks/vendor-invoice/scan" method="post" class="flex flex-wrap items-center gap-2">
+      <label class="text-sm text-stone-600">Gmail スキャン:</label>
+      <select name="days" class="rounded border-stone-300 border text-sm px-2 py-1">
+        <option value="7">7日</option>
+        <option value="30" selected>30日</option>
+        <option value="90">90日</option>
+      </select>
+      <label class="flex items-center gap-1 text-sm">
+        <input type="checkbox" name="dry_run" value="true" {% if dry_run %}checked{% endif %} class="rounded">
+        <span>dry-run</span>
+      </label>
+      <button type="submit" class="px-3 py-1 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-500">
+        スキャン開始
+      </button>
+    </form>
+
+    <form action="/tasks/vendor-invoice/reconcile" method="post" class="flex items-center gap-2">
+      <label class="flex items-center gap-1 text-sm">
+        <input type="checkbox" name="dry_run" value="true" {% if dry_run %}checked{% endif %} class="rounded">
+        <span>dry-run</span>
+      </label>
+      <button type="submit" class="px-3 py-1 rounded border border-stone-300 text-sm text-stone-700 hover:bg-stone-100">
+        🔁 消し込み再試行
+      </button>
+    </form>
+  </div>
+</section>
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-4 mb-5">
+  <form method="get" class="flex flex-wrap items-center gap-2 text-sm">
+    <span class="text-stone-500">表示:</span>
+    {% for s in all_statuses %}
+      <label class="flex items-center gap-1">
+        <input type="checkbox" name="status" value="{{ s }}" {% if s in selected %}checked{% endif %} class="rounded">
+        <span>{{ s }} ({{ counter[s] }})</span>
+      </label>
+    {% endfor %}
+    <button type="submit" class="ml-2 px-2 py-1 rounded border border-stone-300 text-xs hover:bg-stone-100">適用</button>
+  </form>
+</section>
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="text-xs text-stone-500 bg-stone-50 border-b border-stone-200">
+      <tr>
+        <th class="text-left py-2 px-3">id</th>
+        <th class="text-left">status</th>
+        <th class="text-left">partner / sender</th>
+        <th class="text-right">amount</th>
+        <th class="text-left">期日</th>
+        <th class="text-left">deal_id</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in rows %}
+        <tr class="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+          <td class="py-2 px-3"><a href="/tasks/vendor-invoice/{{ c.id }}" class="font-mono text-sky-700 hover:underline">{{ c.id }}</a></td>
+          <td>
+            {% set color = {
+              "registered": "bg-sky-100 text-sky-800",
+              "reconciled": "bg-emerald-100 text-emerald-800",
+              "unpaid": "bg-amber-100 text-amber-800",
+              "pending": "bg-stone-100 text-stone-700",
+              "manual_review": "bg-rose-100 text-rose-800",
+              "failed": "bg-rose-100 text-rose-800",
+              "excluded": "bg-stone-100 text-stone-500"
+            }.get(c.status, "bg-stone-100 text-stone-700") %}
+            <span class="text-xs px-2 py-0.5 rounded-full {{ color }}">{{ c.status }}</span>
+          </td>
+          <td>
+            <div class="truncate max-w-[16rem]">{{ c.extracted_partner_name or "" }}</div>
+            <div class="text-xs text-stone-400 truncate max-w-[16rem]">{{ c.sender }}</div>
+          </td>
+          <td class="text-right font-mono">{% if c.extracted_amount %}¥{{ "{:,}".format(c.extracted_amount) }}{% endif %}</td>
+          <td class="text-stone-600">{{ c.extracted_due_date or "" }}</td>
+          <td class="font-mono text-stone-500">{{ c.freee_deal_id or "" }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="py-8 text-center text-stone-400">該当する候補がありません</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}ベンダー請求書 · 消し込み結果{% endblock %}
+{% block content %}
+<nav class="text-sm text-stone-500 mb-3">
+  <a href="/" class="hover:underline">ダッシュボード</a> /
+  <a href="/tasks/vendor-invoice" class="hover:underline">候補一覧</a>
+</nav>
+
+<h1 class="text-2xl font-bold mb-1">消し込み結果</h1>
+<p class="text-stone-500 text-sm mb-6">
+  {% if dry_run %}<span class="text-amber-700">[DRY-RUN]</span>{% endif %}
+  試行: {{ total }} 件 / 消し込み成功: {{ matched }} 件
+</p>
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden mb-5">
+  <table class="w-full text-sm">
+    <thead class="text-xs text-stone-500 bg-stone-50 border-b border-stone-200">
+      <tr>
+        <th class="text-left py-2 px-3">候補ID</th>
+        <th class="text-left">matched</th>
+        <th class="text-left">対応deal_id</th>
+        <th class="text-left">notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+        <tr class="border-b border-stone-100 last:border-0">
+          <td class="py-2 px-3"><a href="/tasks/vendor-invoice/{{ r.candidate_id }}" class="font-mono text-sky-700 hover:underline">{{ r.candidate_id }}</a></td>
+          <td>{% if r.matched %}<span class="text-emerald-700">✓</span>{% else %}<span class="text-stone-400">—</span>{% endif %}</td>
+          <td class="font-mono">{{ r.matched_deal_id or "" }}</td>
+          <td class="text-stone-500 text-xs">{{ r.notes }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="py-8 text-center text-stone-400">対象（registered/unpaid）の候補がありません</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<a href="/tasks/vendor-invoice" class="px-4 py-2 rounded-lg bg-stone-800 text-white text-sm hover:bg-stone-700">一覧へ戻る</a>
+{% endblock %}

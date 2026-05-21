@@ -7,7 +7,13 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv(override=True)
+# 空文字列の env を持つキーは「未設定」とみなして .env から読み直す。
+# シェルに `EXPORT FOO=""` が残っているとデフォルト load_dotenv() がそのキーを
+# 「既に存在する」と判断してスキップしてしまい、.env の値が反映されない事故を防ぐ。
+# 明示的に値が入っている env（pytest の monkeypatch を含む）は尊重する。
+for _k in [k for k, v in os.environ.items() if v == ""]:
+    del os.environ[_k]
+load_dotenv()
 
 
 def _bool(value: str | bool | None) -> bool:

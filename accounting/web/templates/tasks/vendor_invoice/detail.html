@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}ベンダー請求書 · #{{ c.id }}{% endblock %}
+{% block content %}
+<nav class="text-sm text-stone-500 mb-3">
+  <a href="/" class="hover:underline">ダッシュボード</a> /
+  <a href="/tasks/vendor-invoice" class="hover:underline">候補一覧</a> / #{{ c.id }}
+</nav>
+
+<h1 class="text-2xl font-bold mb-1">候補 #{{ c.id }}</h1>
+<p class="text-stone-500 text-sm mb-6">
+  <span class="px-2 py-0.5 rounded-full text-xs bg-stone-100">{{ c.status }}</span>
+  / classification = {{ c.classification }}
+</p>
+
+{% if c.error_message %}
+  <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-5 text-sm text-rose-800">
+    <p class="font-medium mb-1">エラー / 注記</p>
+    <p class="whitespace-pre-wrap break-words">{{ c.error_message }}</p>
+  </div>
+{% endif %}
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 mb-5">
+  <h2 class="text-lg font-semibold mb-3">メール情報</h2>
+  <dl class="grid grid-cols-3 gap-y-2 text-sm">
+    <dt class="text-stone-500">送信者</dt><dd class="col-span-2 font-mono">{{ c.sender }}</dd>
+    <dt class="text-stone-500">件名</dt><dd class="col-span-2">{{ c.subject }}</dd>
+    <dt class="text-stone-500">受信日時</dt><dd class="col-span-2">{{ c.received_at }}</dd>
+    <dt class="text-stone-500">gmail_message_id</dt><dd class="col-span-2 font-mono text-xs break-all">{{ c.gmail_message_id }}</dd>
+    {% if c.raw_pdf_path %}
+      <dt class="text-stone-500">添付PDF</dt><dd class="col-span-2 font-mono text-xs break-all">{{ c.raw_pdf_path }}</dd>
+    {% endif %}
+  </dl>
+</section>
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 mb-5">
+  <h2 class="text-lg font-semibold mb-3">抽出結果</h2>
+  <dl class="grid grid-cols-3 gap-y-2 text-sm">
+    <dt class="text-stone-500">取引先</dt><dd class="col-span-2">{{ c.extracted_partner_name or "(なし)" }}</dd>
+    <dt class="text-stone-500">発行日</dt><dd class="col-span-2">{{ c.extracted_issue_date or "(なし)" }}</dd>
+    <dt class="text-stone-500">支払期日</dt><dd class="col-span-2">{{ c.extracted_due_date or "(なし)" }}</dd>
+    <dt class="text-stone-500">合計金額</dt><dd class="col-span-2 font-mono">{% if c.extracted_amount %}¥{{ "{:,}".format(c.extracted_amount) }}{% else %}(なし){% endif %}</dd>
+    <dt class="text-stone-500">消費税</dt><dd class="col-span-2 font-mono">{% if c.extracted_tax %}¥{{ "{:,}".format(c.extracted_tax) }}{% else %}(なし){% endif %}</dd>
+    <dt class="text-stone-500">振込先</dt><dd class="col-span-2 whitespace-pre-wrap">{{ c.extracted_bank_account or "(なし)" }}</dd>
+    <dt class="text-stone-500">明細概要</dt><dd class="col-span-2 whitespace-pre-wrap">{{ c.extracted_summary or "(なし)" }}</dd>
+  </dl>
+</section>
+
+<section class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 mb-5">
+  <h2 class="text-lg font-semibold mb-3">freee 引き当て</h2>
+  <dl class="grid grid-cols-3 gap-y-2 text-sm">
+    <dt class="text-stone-500">partner_id</dt><dd class="col-span-2 font-mono">{{ c.freee_partner_id or "(未引き当て)" }}</dd>
+    <dt class="text-stone-500">account_item</dt><dd class="col-span-2">{{ c.freee_account_item_name or "(未引き当て)" }} <span class="text-stone-400">{% if c.freee_account_item_id %}(id={{ c.freee_account_item_id }}){% endif %}</span></dd>
+    <dt class="text-stone-500">freee deal_id</dt><dd class="col-span-2 font-mono">{{ c.freee_deal_id or "(未登録)" }}</dd>
+    {% if c.reconciled_with_deal_id %}
+      <dt class="text-stone-500">消し込み相手 deal</dt><dd class="col-span-2 font-mono">{{ c.reconciled_with_deal_id }}</dd>
+    {% endif %}
+    <dt class="text-stone-500">external_id</dt><dd class="col-span-2 font-mono text-xs">{{ external_id }}</dd>
+  </dl>
+</section>
+
+{% if c.classification == "bank_transfer_invoice" and not already_registered %}
+  <form action="/tasks/vendor-invoice/{{ c.id }}/apply" method="post"
+        class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 flex flex-col gap-4">
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" name="dry_run" value="true" {% if dry_run %}checked{% endif %} class="rounded">
+      <span>dry-run（freee に登録せずプレビューのみ）</span>
+    </label>
+    <div class="flex gap-3">
+      <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
+        この内容で freee に登録
+      </button>
+      <a href="/tasks/vendor-invoice" class="px-4 py-2 rounded-lg border border-stone-300 text-sm text-stone-600 hover:bg-stone-100">戻る</a>
+    </div>
+  </form>
+{% elif already_registered %}
+  <div class="bg-stone-50 border border-stone-200 rounded-2xl p-5 text-sm text-stone-600">
+    既に登録済みです（冪等性ガードで自動スキップされます）。
+  </div>
+{% else %}
+  <div class="bg-stone-50 border border-stone-200 rounded-2xl p-5 text-sm text-stone-600">
+    classification = {{ c.classification }} は登録対象外（excluded など）。
+  </div>
+{% endif %}
+{% endblock %}

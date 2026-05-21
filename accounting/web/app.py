@@ -34,9 +34,16 @@ def create_app(auth_token: str) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # ルーティング
-    from accounting.web.routes import dashboard, dept_store_invoice
+    from accounting.web.routes import (
+        dashboard,
+        dept_store_invoice,
+        inventory_valuation,
+        vendor_invoice,
+    )
 
     app.include_router(dashboard.router)
     app.include_router(dept_store_invoice.router)
+    app.include_router(vendor_invoice.router)
+    app.include_router(inventory_valuation.router)
 
     return app
