@@ -526,12 +526,12 @@ def test_default_tax_name():
     assert default_tax_name("受取利息", "income") == "非課売上"
     assert default_tax_name("支払利息", "expense") == "非課仕入"
     assert default_tax_name("給料手当", "expense") == "対象外"
-    # fallback: entry_side で分岐（freee API はスペース入り形式を要求）
-    assert default_tax_name("消耗品費", "expense") == "課対仕入 10%"
-    assert default_tax_name("通信費", "expense") == "課対仕入 10%"
-    assert default_tax_name("旅費交通費", "expense") == "課対仕入 10%"
-    assert default_tax_name("車両費", "expense") == "課対仕入 10%"
-    assert default_tax_name("売上高", "income") == "課税売上 10%"
+    # fallback: entry_side で分岐（freee API はスペースなし形式を要求）
+    assert default_tax_name("消耗品費", "expense") == "課対仕入10%"
+    assert default_tax_name("通信費", "expense") == "課対仕入10%"
+    assert default_tax_name("旅費交通費", "expense") == "課対仕入10%"
+    assert default_tax_name("車両費", "expense") == "課対仕入10%"
+    assert default_tax_name("売上高", "income") == "課税売上10%"
 
 
 def test_build_payload_fills_tax_name_when_missing():

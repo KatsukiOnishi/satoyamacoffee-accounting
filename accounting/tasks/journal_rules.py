@@ -393,17 +393,17 @@ def default_tax_name(account_item_name: str, entry_side: str) -> str:
     """suggested_tax_name が空の候補のためのデフォルト税区分を返す。
 
     1. 勘定科目別マッピング（B/S 科目・社会保険・利息など消費税対象外）を優先
-    2. fallback: income → 「課税売上 10%」, expense → 「課対仕入 10%」
+    2. fallback: income → 「課税売上10%」, expense → 「課対仕入10%」
 
-    NOTE: freee API は税区分名にスペース入りの形式（例: "課対仕入 10%"）を
-    要求する。UI で表示される「課対仕入（控80）10%」は別表記で API では弾かれる。
-    既存の動作実績ある user_matcher も「課対仕入 10%」を使っている。
+    NOTE: freee API が受け付ける税区分名は **スペースなしの形式**。
+    UI で表示される「課対仕入（控80）10%」「課対仕入 10%」（半角スペース入り）は
+    どちらも API で弾かれる（既存ルール取得結果と複数の 400 エラーから検証済み）。
     """
     if account_item_name in _DEFAULT_TAX_BY_ACCOUNT_ITEM:
         return _DEFAULT_TAX_BY_ACCOUNT_ITEM[account_item_name]
     if entry_side == "income":
-        return "課税売上 10%"
-    return "課対仕入 10%"
+        return "課税売上10%"
+    return "課対仕入10%"
 
 
 def _build_payload(c: RuleCandidate, *, priority: int = 50) -> dict[str, Any]:
