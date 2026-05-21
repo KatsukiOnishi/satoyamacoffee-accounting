@@ -350,6 +350,29 @@ def journal_rules_update(
         typer.echo("[dry-run] freee には何も書き込んでいません。--no-dry-run で本番更新。")
 
 
+@app.command("payroll")
+def payroll(
+    month: str = typer.Option(..., "--month", help="対象月 YYYY-MM（例: 2026-05）"),
+    dry_run: bool = typer.Option(
+        settings.dry_run,
+        "--dry-run/--no-dry-run",
+        help="dry-run モード（既定）。本番登録は --no-dry-run を明示",
+    ),
+) -> None:
+    """月次給与仕訳を freee に登録する（社員1人につき1本の振替伝票）。
+
+    attendance-system から月次給与を取得し、給与手当 / 旅費交通費 を借方、
+    預り金（所得税・住民税・社会保険） / 普通預金 を貸方に立てる。
+    """
+    from accounting.core.dry_run import DryRunContext
+    from accounting.tasks import payroll as task
+
+    with DryRunContext(dry_run):
+        report = task.run(month=month)
+    if report.failure_count > 0:
+        raise typer.Exit(code=1)
+
+
 @app.command("inventory-valuation")
 def inventory_valuation(
     month: str = typer.Option(..., "--month", help="対象月 YYYY-MM（例: 2026-04）"),

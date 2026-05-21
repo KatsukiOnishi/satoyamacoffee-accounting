@@ -25,6 +25,12 @@ async def dashboard(request: Request) -> HTMLResponse:
             "badge": None,
         },
         {
+            "title": "月次給与仕訳",
+            "description": "attendance-system から月次給与を取得し、社員 1 人 1 仕訳で freee に登録（給与手当・旅費交通費・預り金）。",
+            "href": "/tasks/payroll",
+            "badge": None,
+        },
+        {
             "title": "百貨店明細取込",
             "description": "買掛金支払明細書の写真から売上仕訳を起こして freee に登録する。",
             "href": "/tasks/dept-store-invoice/upload",

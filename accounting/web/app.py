@@ -38,6 +38,7 @@ def create_app(auth_token: str) -> FastAPI:
         dashboard,
         dept_store_invoice,
         inventory_valuation,
+        payroll,
         vendor_invoice,
     )
 
@@ -45,5 +46,6 @@ def create_app(auth_token: str) -> FastAPI:
     app.include_router(dept_store_invoice.router)
     app.include_router(vendor_invoice.router)
     app.include_router(inventory_valuation.router)
+    app.include_router(payroll.router)
 
     return app
