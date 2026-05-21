@@ -44,11 +44,14 @@ log = get_logger("payroll")
 
 TASK_NAME = "payroll"
 
-# freee 勘定科目（名前で引き当て、ID はハードコードしない）
-ACCOUNT_NAME_SALARY = "給与手当"
+# freee 勘定科目（名前で引き当て、ID はハードコードしない）。
+# 事業所により表記が違うので、必要なら env で上書き可能にする。
+ACCOUNT_NAME_SALARY = "給料手当"
 ACCOUNT_NAME_TRANSPORT = "旅費交通費"
 ACCOUNT_NAME_DEPOSIT = "預り金"
-ACCOUNT_NAME_BANK = "普通預金"
+# 給与振込元口座（freee 上では「銀行口座」勘定科目として現れる）。
+# さとやまコーヒー本番事業所では PayPay 銀行（API）を給与振込口座として使う。
+ACCOUNT_NAME_BANK = "ＰａｙＰａｙ銀行（API）"
 
 
 @dataclass

@@ -31,10 +31,10 @@ def _row(**overrides):
 
 def _account_items():
     return [
-        {"id": 1001, "name": "給与手当"},
+        {"id": 1001, "name": "給料手当"},
         {"id": 1002, "name": "旅費交通費"},
         {"id": 1003, "name": "預り金"},
-        {"id": 1004, "name": "普通預金"},
+        {"id": 1004, "name": "ＰａｙＰａｙ銀行（API）"},
         {"id": 1099, "name": "その他"},
     ]
 
