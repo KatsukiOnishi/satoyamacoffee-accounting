@@ -95,6 +95,7 @@ accounting ping --dry-run
 - `accounting vendor-invoice scan [--days 30] [--no-dry-run]` — ベンダー請求書メールを Gmail から取込み → freee 取引登録 + 未払金消し込み
 - `accounting vendor-invoice list / apply <id> / reconcile` — 候補一覧・個別承認・振込後の消し込み再試行
 - `accounting auth gmail-init` — Gmail OAuth 初回認可（詳細は `README_vendor_invoice.md`）
+- `accounting sync-hrmos [--month YYYY-MM] [--no-dry-run] [-u USER_ID ...]` — HRMOS から月次勤怠 CSV を取得 → shifts.satoyamacoffee.com の `/api/admin/import-hrmos` に投入
 - `pytest` — テスト実行
 
 ## 6. 環境変数
@@ -137,6 +138,39 @@ accounting ping --dry-run
 
 ### ユーザー側準備
 `README_vendor_invoice.md` を参照。Google Cloud Console での OAuth クライアント作成 → `accounting auth gmail-init` で完了。
+
+## 8b. sync-hrmos タスク（HRMOS → shifts 月次勤怠取込）
+
+毎月20日（HRMOS 承認締切日）に、前月の社員別勤怠 CSV を HRMOS から取得して
+shifts.satoyamacoffee.com（attendance-system）に投入するタスク。
+
+- パッケージ: `accounting/tasks/sync_hrmos_to_shifts.py`
+- コネクタ: `accounting/connectors/hrmos.py`（スクレイピング） / `accounting/connectors/shifts.py`（書き込み API）
+- 冪等性キー: `(task='sync-hrmos', external_id=YYYY-MM)` — 全件モードのみ
+  - `--user-ids` 指定時はチェックも記録もスキップ（限定再実行用）
+  - shifts 側は `(staffId, date)` で upsert するため、CSV 再送は安全
+- 失敗時: Resend で `katsuki.onishi@gmail.com` に通知
+
+### フロー
+1. HRMOS にログイン（CSRF 抽出 → form POST）
+2. `/staffs` をスクレイプして在籍中の全社員 user_id を抽出
+3. `HRMOS_EXCLUDE_USER_IDS`（カンマ区切り）に該当する user_id を除外
+4. 各 user_id について `/works/csv_download` から Shift-JIS の CSV bytes を取得（勤怠ゼロの月も空欄CSVが返る）
+5. shifts の `POST /api/admin/import-hrmos` に multipart で一括 POST（Bearer 認証）
+6. レスポンスの saved / skipped / errors をログ＋RunReport に集約
+
+`--user-ids` で限定実行する場合は手順 2, 3 をスキップ。`/bulk_approvals` ベースの
+`HrmosClient.list_user_ids_for_month()` も残してあるが、現在のタスクでは未使用。
+
+### 起動方法
+- 手動: `accounting sync-hrmos --month 2026-04 --no-dry-run`
+- 自動: `samples/com.satoyamacoffee.sync-hrmos.plist` を `~/Library/LaunchAgents/` に配置 → `launchctl load`（毎月20日 09:00）
+
+### ユーザー側準備
+- `.env` に `HRMOS_USER`, `HRMOS_PASS`, `SHIFTS_ADMIN_API_KEY` を設定
+- `HRMOS_EXCLUDE_USER_IDS` にテストアカウント・退職者の user_id をカンマ区切りで設定（現状: `5,6`）
+- shifts 側 `.env`（Vercel 環境変数）にも同値の `ADMIN_API_KEY` を設定
+- shifts のスタッフマスタに HRMOS の社員番号が登録されていることが前提（未登録なら skipped に出る）
 
 ## 9. 他リポジトリとの関係
 

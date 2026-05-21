@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  毎月20日 09:00 (Mac ローカル時刻) に accounting sync-hrmos --no-dry-run を起動する。
+
+  インストール手順:
+    1. このファイルを ~/Library/LaunchAgents/ にコピー
+       cp samples/com.satoyamacoffee.sync-hrmos.plist ~/Library/LaunchAgents/
+
+    2. パスを自環境に合わせて編集
+       - WorkingDirectory: 本リポジトリの絶対パス
+       - ProgramArguments の python パス: `.venv/bin/python` の絶対パス
+
+    3. ロード
+       launchctl load ~/Library/LaunchAgents/com.satoyamacoffee.sync-hrmos.plist
+
+  アンインストール:
+       launchctl unload ~/Library/LaunchAgents/com.satoyamacoffee.sync-hrmos.plist
+
+  動作確認 (即時 1 回実行):
+       launchctl start com.satoyamacoffee.sync-hrmos
+
+  ログ:
+       tail -f /Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-sync-hrmos.log
+       tail -f /Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-sync-hrmos.err.log
+
+  注意:
+    - Mac がスリープ中 or 電源オフだと走らない。前月20日に走れなかった場合は手動で
+      `accounting sync-hrmos --month YYYY-MM --no-dry-run` を実行する。
+    - 失敗時は Resend で katsuki.onishi@gmail.com に通知が飛ぶ（.env の RESEND_API_KEY が必要）。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.satoyamacoffee.sync-hrmos</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/katsuki/Claude/satoyamacoffee-accounting</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/katsuki/Claude/satoyamacoffee-accounting/.venv/bin/python</string>
+        <string>-m</string>
+        <string>accounting.cli</string>
+        <string>sync-hrmos</string>
+        <string>--no-dry-run</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>20</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-sync-hrmos.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-sync-hrmos.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

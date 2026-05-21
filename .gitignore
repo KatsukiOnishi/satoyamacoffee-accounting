@@ -1,6 +1,8 @@
 .env
 .venv/
-samples/
+samples/*
+# 運用テンプレート（launchd plist など）は除外しない
+!samples/com.satoyamacoffee.sync-hrmos.plist
 secrets/
 *.heic
 *.HEIC

@@ -69,6 +69,22 @@ class Settings(BaseSettings):
     shopify_shop_domain: str = Field(default="", alias="SHOPIFY_SHOP_DOMAIN")
     shopify_access_token: str = Field(default="", alias="SHOPIFY_ACCESS_TOKEN")
 
+    # HRMOS（勤怠 CSV 取得元）
+    hrmos_login_url: str = Field(
+        default="https://f.ieyasu.co/asd2171/login", alias="HRMOS_LOGIN_URL"
+    )
+    hrmos_user: str = Field(default="", alias="HRMOS_USER")
+    hrmos_pass: str = Field(default="", alias="HRMOS_PASS")
+    # HRMOS の社員IDで、sync-hrmos の対象から除外したい ID（テストアカウント・退職者など）
+    # カンマ区切りで複数指定可。例: "5,6"
+    hrmos_exclude_user_ids: str = Field(default="", alias="HRMOS_EXCLUDE_USER_IDS")
+
+    # shifts（attendance-system）の書き込み用エンドポイント
+    shifts_base_url: str = Field(
+        default="https://shifts.satoyamacoffee.com", alias="SHIFTS_BASE_URL"
+    )
+    shifts_admin_api_key: str = Field(default="", alias="SHIFTS_ADMIN_API_KEY")
+
     # メール通知
     resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
     notify_email: str = Field(default="katsuki.onishi@gmail.com", alias="NOTIFY_EMAIL")
@@ -93,6 +109,25 @@ class Settings(BaseSettings):
         path = Path(__file__).resolve().parent.parent / "logs"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    @property
+    def hrmos_exclude_user_id_set(self) -> set[int]:
+        """`HRMOS_EXCLUDE_USER_IDS` をカンマ区切り → set[int] に変換して返す。
+
+        空文字・空白・非整数は無視する。
+        """
+        if not self.hrmos_exclude_user_ids:
+            return set()
+        ids: set[int] = set()
+        for part in self.hrmos_exclude_user_ids.split(","):
+            s = part.strip()
+            if not s:
+                continue
+            try:
+                ids.add(int(s))
+            except ValueError:
+                continue
+        return ids
 
     def vendor_partner_id(self, slug: str) -> str:
         """env `VENDOR_MAP_{SLUG}` から freee の partner_id を取得する。

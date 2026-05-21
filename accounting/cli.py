@@ -400,6 +400,37 @@ def inventory_valuation(
         raise typer.Exit(code=1)
 
 
+@app.command("sync-hrmos")
+def sync_hrmos(
+    month: Optional[str] = typer.Option(
+        None,
+        "--month",
+        help="対象月 YYYY-MM。省略時は実行日基準の前月（HRMOS 承認締切が毎月20日のため）",
+    ),
+    dry_run: bool = typer.Option(
+        settings.dry_run,
+        "--dry-run/--no-dry-run",
+        help="dry-run モード（既定）。本番書き込みは --no-dry-run を明示",
+    ),
+    user_ids: Optional[list[int]] = typer.Option(
+        None,
+        "--user-ids",
+        "-u",
+        help="HRMOS user_id を限定実行（複数指定可: -u 7 -u 8）。冪等性チェックを skip する",
+    ),
+) -> None:
+    """HRMOS から月次勤怠 CSV を取得し shifts.satoyamacoffee.com の管理者 API に投入する。
+
+    HRMOS のログイン → /bulk_approvals スクレイプで user_id 抽出 → 各社員の CSV を
+    /works/csv_download から取得 → POST /api/admin/import-hrmos に multipart で一括送信。
+    shifts 側は (staffId, date) で upsert するため、再送しても二重登録にならない。
+    """
+    from accounting.tasks import sync_hrmos_to_shifts as task
+
+    result = task.run(month=month, dry_run=dry_run, user_ids=user_ids)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option(

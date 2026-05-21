@@ -21,9 +21,14 @@ cp .env.example .env
 accounting --help              # コマンド一覧
 accounting ping --dry-run      # 動作確認（共通基盤のヘルスチェック）
 accounting list-accounts       # freee 勘定科目一覧
+accounting sync-hrmos --month 2026-04 --dry-run    # HRMOS → shifts 勤怠取込（dry-run）
 ```
 
 デフォルトは dry-run。本番実行は `--no-dry-run` を明示する。
+
+### 月次定期実行（launchd）
+
+`accounting sync-hrmos` は毎月20日（HRMOS 承認締切日）に走らせる想定。`samples/com.satoyamacoffee.sync-hrmos.plist` を `~/Library/LaunchAgents/` にコピーして `launchctl load` する（詳細は plist のコメント参照）。
 
 ## テスト
 
