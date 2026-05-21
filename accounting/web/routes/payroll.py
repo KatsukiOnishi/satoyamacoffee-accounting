@@ -174,7 +174,7 @@ async def preview(
             "salary": ids.salary,
             "transport": ids.transport,
             "deposit": ids.deposit,
-            "bank": ids.bank,
+            "payables": ids.payables,
         },
         "rows": [
             {
@@ -243,7 +243,7 @@ async def register(
         salary=int(aids["salary"]),
         transport=int(aids["transport"]),
         deposit=int(aids["deposit"]),
-        bank=int(aids["bank"]),
+        payables=int(aids["payables"]),
     )
 
     run_id = generate_run_id("payroll")

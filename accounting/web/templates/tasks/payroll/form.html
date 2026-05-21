@@ -20,7 +20,8 @@
 
   <div class="bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs text-stone-600">
     取得元: {{ attendance_url or "(未設定)" }}<br>
-    仕訳構造: <span class="text-stone-700">借方</span> = 給与手当 + 旅費交通費 / <span class="text-stone-700">貸方</span> = 預り金（税・社保） + 普通預金<br>
+    仕訳構造: <span class="text-stone-700">借方</span> = 給料手当 + 旅費交通費 / <span class="text-stone-700">貸方</span> = 預り金（税・社保） + 未払金<br>
+    振込日に freee の「自動で経理」で未払金として承認すると消し込みされます。<br>
     社会保険の <b>会社負担分（法定福利費）は対象外</b>です。
   </div>
 

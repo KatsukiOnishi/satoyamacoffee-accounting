@@ -34,7 +34,7 @@ def _account_items():
         {"id": 1001, "name": "給料手当"},
         {"id": 1002, "name": "旅費交通費"},
         {"id": 1003, "name": "預り金"},
-        {"id": 1004, "name": "ＰａｙＰａｙ銀行（API）"},
+        {"id": 1004, "name": "未払金"},
         {"id": 1099, "name": "その他"},
     ]
 
@@ -49,7 +49,7 @@ def test_resolve_account_ids_finds_all_required():
     assert ids.salary == 1001
     assert ids.transport == 1002
     assert ids.deposit == 1003
-    assert ids.bank == 1004
+    assert ids.payables == 1004
 
 
 def test_resolve_account_ids_raises_if_missing():
@@ -103,14 +103,14 @@ def test_build_journal_payload_no_transport_when_zero():
 
 
 def test_build_journal_payload_zero_deductions():
-    """所得税・住民税・社保が全部 0 のとき、貸方は普通預金 1 件のみ。"""
+    """所得税・住民税・社保が全部 0 のとき、貸方は未払金 1 件のみ。"""
     payload = _build(_row(
         income_tax=0, resident_tax=0, social_ins=0,
         total_pay=262000, total_deduct=0, net_pay=262000,
     ))
     credits = [d for d in payload["details"] if d["entry_side"] == "credit"]
     assert len(credits) == 1
-    assert credits[0]["account_item_id"] == 1004  # 普通預金
+    assert credits[0]["account_item_id"] == 1004  # 未払金
     assert credits[0]["amount"] == 262000
 
 

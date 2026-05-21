@@ -502,3 +502,24 @@ class FreeeClient:
             "raw": data,
             "external_id": external_id,
         }
+
+    def delete_manual_journal(self, manual_journal_id: int) -> None:
+        """振替伝票を ID 指定で削除する。dry-run では実 API を叩かない。"""
+        if is_dry_run():
+            logger.info(
+                "freee.manual_journal.delete_dry_run",
+                manual_journal_id=manual_journal_id,
+            )
+            return
+        url = f"{self.base_url}/api/1/manual_journals/{manual_journal_id}"
+        params = {"company_id": self.company_id}
+        res = self._request("DELETE", url, params=params)
+        if not res.is_success:
+            logger.error(
+                "freee.manual_journal.delete_api_error",
+                manual_journal_id=manual_journal_id,
+                status=res.status_code,
+                body=res.text[:500],
+            )
+            res.raise_for_status()
+        logger.info("freee.manual_journal.deleted", manual_journal_id=manual_journal_id)

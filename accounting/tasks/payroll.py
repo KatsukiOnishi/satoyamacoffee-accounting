@@ -5,15 +5,18 @@ attendance-system から月次給与データ（社員別）を取得し、freee
 
 仕訳パターン（1社員1月分）:
   借方:
-    給与手当         basePay
+    給料手当         basePay
     旅費交通費       transportPay  (>0 のときのみ)
   貸方:
-    預り金           incomeTax     description="所得税" (>0)
-    預り金           residentTax   description="住民税" (>0)
-    預り金           socialIns     description="社会保険料" (>0)
-    普通預金         netPay        description="差引支給"
+    預り金           incomeTax     description="所得税預り" (>0)
+    預り金           residentTax   description="住民税預り" (>0)
+    預り金           socialIns     description="社会保険料預り" (>0)
+    未払金           netPay        description="給与未払（差引支給）"
 
-issue_date は対象月の月末。
+issue_date は対象月の月末。**直接 PayPay銀行で立てない** のは、後日の銀行同期
+（freee の「自動で経理」）で同じ出金を拾った時に、ユーザーが「未払金」勘定で
+取引承認するだけで自動消し込みできるようにするため（vendor-invoice と同じ思想）。
+
 社会保険の **会社負担分（法定福利費）は本タスクの対象外** — 別途手動 or 後続タスクで対応。
 
 冪等性:
@@ -49,9 +52,10 @@ TASK_NAME = "payroll"
 ACCOUNT_NAME_SALARY = "給料手当"
 ACCOUNT_NAME_TRANSPORT = "旅費交通費"
 ACCOUNT_NAME_DEPOSIT = "預り金"
-# 給与振込元口座（freee 上では「銀行口座」勘定科目として現れる）。
-# さとやまコーヒー本番事業所では PayPay 銀行（API）を給与振込口座として使う。
-ACCOUNT_NAME_BANK = "ＰａｙＰａｙ銀行（API）"
+# 給与の差引支給額は「未払金」で立てる（B方式）。後日 freee が銀行同期で振込を
+# 拾った際、ユーザーが freee「自動で経理」で同 amount の「未払金」取引として承認
+# すれば自動消し込みされる。vendor-invoice と同じ運用思想。
+ACCOUNT_NAME_PAYABLES = "未払金"
 
 
 @dataclass
@@ -59,7 +63,7 @@ class AccountIdSet:
     salary: int
     transport: int
     deposit: int
-    bank: int
+    payables: int
 
 
 # ---- 純粋関数 ----
@@ -110,7 +114,7 @@ def resolve_account_ids(account_items: list[dict[str, Any]]) -> AccountIdSet:
         salary=find(ACCOUNT_NAME_SALARY),
         transport=find(ACCOUNT_NAME_TRANSPORT),
         deposit=find(ACCOUNT_NAME_DEPOSIT),
-        bank=find(ACCOUNT_NAME_BANK),
+        payables=find(ACCOUNT_NAME_PAYABLES),
     )
 
 
@@ -184,10 +188,10 @@ def build_journal_payload(
     details.append(
         {
             "entry_side": "credit",
-            "account_item_id": account_ids.bank,
+            "account_item_id": account_ids.payables,
             "tax_code": 0,
             "amount": row.net_pay,
-            "description": f"{desc_prefix} 差引支給",
+            "description": f"{desc_prefix} 差引支給未払",
         }
     )
 
