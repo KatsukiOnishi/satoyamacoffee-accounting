@@ -513,3 +513,63 @@ def test_csv_roundtrip(tmp_path):
     assert loaded[0].max_amount == 25000
     assert loaded[1].min_amount is None
     assert loaded[1].max_amount is None
+
+
+def test_default_tax_name():
+    """default_tax_name のフォールバック挙動。"""
+    from accounting.tasks.journal_rules import default_tax_name
+
+    # 勘定科目マッピング優先
+    assert default_tax_name("法定福利費", "expense") == "対象外"
+    assert default_tax_name("短期借入金", "expense") == "対象外"
+    assert default_tax_name("長期借入金", "expense") == "対象外"
+    assert default_tax_name("受取利息", "income") == "非課売上"
+    assert default_tax_name("支払利息", "expense") == "非課仕入"
+    assert default_tax_name("給料手当", "expense") == "対象外"
+    # fallback: entry_side で分岐（freee API はスペース入り形式を要求）
+    assert default_tax_name("消耗品費", "expense") == "課対仕入 10%"
+    assert default_tax_name("通信費", "expense") == "課対仕入 10%"
+    assert default_tax_name("旅費交通費", "expense") == "課対仕入 10%"
+    assert default_tax_name("車両費", "expense") == "課対仕入 10%"
+    assert default_tax_name("売上高", "income") == "課税売上 10%"
+
+
+def test_build_payload_fills_tax_name_when_missing():
+    """suggested_tax_name が空でも payload には tax_name が乗る（freee 400 防止）。"""
+    from accounting.tasks.journal_rules import RuleCandidate, _build_payload
+
+    c = RuleCandidate(
+        keyword="社会保険",
+        condition=0,
+        entry_side_str="expense",
+        partner_name=None,
+        suggested_account_item_name="法定福利費",
+        suggested_tax_name="",  # 空でも default が効く
+        act=0,
+        occurrence=8,
+        consistency=1.0,
+        min_amount=43005,
+        max_amount=43005,
+    )
+    payload = _build_payload(c)
+    assert payload["tax_name"] == "対象外"
+    assert payload["account_item_name"] == "法定福利費"
+
+
+def test_build_payload_preserves_explicit_tax_name():
+    """suggested_tax_name が指定されていれば default を上書きしない。"""
+    from accounting.tasks.journal_rules import RuleCandidate, _build_payload
+
+    c = RuleCandidate(
+        keyword="kw",
+        condition=0,
+        entry_side_str="expense",
+        partner_name=None,
+        suggested_account_item_name="消耗品費",
+        suggested_tax_name="課対仕入10%",  # default なら 控80 だが、指定が優先
+        act=0,
+        occurrence=5,
+        consistency=1.0,
+    )
+    payload = _build_payload(c)
+    assert payload["tax_name"] == "課対仕入10%"

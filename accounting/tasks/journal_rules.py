@@ -361,6 +361,51 @@ def _existing_matcher_keys(existing: list[dict[str, Any]]) -> set[tuple[str, int
     return keys
 
 
+# 勘定科目 → デフォルト税区分マッピング。
+# freee user_matchers API は act=0/1 のとき tax_name が必須。
+# wallet_txn のみで deal が紐付かない候補（extract_candidates で top_tax="" になる）には
+# フォールバック値が必要なため、業務的に明らかな科目だけ事前定義する。
+_DEFAULT_TAX_BY_ACCOUNT_ITEM = {
+    # 営業外収益・費用（利息系）
+    "受取利息": "非課売上",
+    "支払利息": "非課仕入",
+    # B/S 科目（金銭移動、消費税対象外）
+    "短期借入金": "対象外",
+    "長期借入金": "対象外",
+    "借入金": "対象外",
+    "未払金": "対象外",
+    "預り金": "対象外",
+    "買掛金": "対象外",
+    "売掛金": "対象外",
+    "立替金": "対象外",
+    "仮払金": "対象外",
+    "仮受金": "対象外",
+    # 社会保険料（不課税）
+    "法定福利費": "対象外",
+    # 人件費（user_matcher 化禁止対象だが念のため）
+    "給料手当": "対象外",
+    "役員報酬": "対象外",
+    "賞与": "対象外",
+}
+
+
+def default_tax_name(account_item_name: str, entry_side: str) -> str:
+    """suggested_tax_name が空の候補のためのデフォルト税区分を返す。
+
+    1. 勘定科目別マッピング（B/S 科目・社会保険・利息など消費税対象外）を優先
+    2. fallback: income → 「課税売上 10%」, expense → 「課対仕入 10%」
+
+    NOTE: freee API は税区分名にスペース入りの形式（例: "課対仕入 10%"）を
+    要求する。UI で表示される「課対仕入（控80）10%」は別表記で API では弾かれる。
+    既存の動作実績ある user_matcher も「課対仕入 10%」を使っている。
+    """
+    if account_item_name in _DEFAULT_TAX_BY_ACCOUNT_ITEM:
+        return _DEFAULT_TAX_BY_ACCOUNT_ITEM[account_item_name]
+    if entry_side == "income":
+        return "課税売上 10%"
+    return "課対仕入 10%"
+
+
 def _build_payload(c: RuleCandidate, *, priority: int = 50) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "act": c.act,
@@ -371,8 +416,10 @@ def _build_payload(c: RuleCandidate, *, priority: int = 50) -> dict[str, Any]:
         "priority": priority,
         "account_item_name": c.suggested_account_item_name,
     }
-    if c.suggested_tax_name:
-        payload["tax_name"] = c.suggested_tax_name
+    # freee は act=0/1 で tax_name 必須なので、空ならフォールバック
+    payload["tax_name"] = c.suggested_tax_name or default_tax_name(
+        c.suggested_account_item_name, c.entry_side_str
+    )
     if c.partner_name:
         payload["partner_name"] = c.partner_name
     if c.min_amount is not None:
