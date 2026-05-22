@@ -10,6 +10,7 @@ import uvicorn
 from rich.console import Console
 from rich.panel import Panel
 
+from accounting.config import settings
 from accounting.web.app import create_app
 from accounting.web.auth import generate_token
 
@@ -71,7 +72,9 @@ def _print_banner(host: str, port: int, token: str) -> tuple[str, str]:
 
 
 def start_server(host: str, port: int, open_browser: bool) -> None:
-    token = generate_token()
+    # `.env` の ACCOUNTING_WEB_TOKEN が設定されていれば固定トークンを使う。
+    # 設定されていなければ起動毎にランダム生成（従来挙動）。
+    token = settings.web_token.strip() or generate_token()
     local_url, _ = _print_banner(host, port, token)
 
     if open_browser:

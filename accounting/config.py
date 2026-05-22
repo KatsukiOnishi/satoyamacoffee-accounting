@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     # Web UI
     web_host: str = Field(default="0.0.0.0", alias="WEB_HOST")
     web_port: int = Field(default=8080, alias="WEB_PORT")
+    # 固定トークン。設定されているとサーバ再起動でも変わらず、ブックマーク URL が継続して使える。
+    # 空のときは従来通り起動毎にランダムトークン生成。
+    web_token: str = Field(default="", alias="ACCOUNTING_WEB_TOKEN")
 
     @property
     def database_url(self) -> str:

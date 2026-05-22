@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  accounting Web UI (FastAPI/uvicorn) を Mac ログイン時から常駐させる launchd 定義。
+
+  ブックマーク URL:
+    http://localhost:8080/?token=<.env の ACCOUNTING_WEB_TOKEN>
+    iPhone (同一LAN) : http://<MacのLAN IP>:8080/?token=<同上>
+
+  インストール:
+    cp samples/com.satoyamacoffee.accounting-serve.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.satoyamacoffee.accounting-serve.plist
+
+  動作確認:
+    launchctl list | grep accounting-serve
+    curl -I http://localhost:8080/  # 401 が返ればサーバは起きてる
+    tail -f /Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-accounting-serve.log
+
+  アンインストール:
+    launchctl unload ~/Library/LaunchAgents/com.satoyamacoffee.accounting-serve.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.satoyamacoffee.accounting-serve</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/katsuki/Claude/satoyamacoffee-accounting</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/katsuki/Claude/satoyamacoffee-accounting/.venv/bin/python</string>
+        <string>-m</string>
+        <string>accounting.cli</string>
+        <string>serve</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8080</string>
+        <string>--no-open-browser</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-accounting-serve.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/katsuki/Claude/satoyamacoffee-accounting/logs/launchd-accounting-serve.err.log</string>
+</dict>
+</plist>

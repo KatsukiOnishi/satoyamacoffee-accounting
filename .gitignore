@@ -3,6 +3,7 @@
 samples/*
 # 運用テンプレート（launchd plist など）は除外しない
 !samples/com.satoyamacoffee.sync-hrmos.plist
+!samples/com.satoyamacoffee.accounting-serve.plist
 secrets/
 *.heic
 *.HEIC
