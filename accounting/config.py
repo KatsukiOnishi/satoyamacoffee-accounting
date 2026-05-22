@@ -67,7 +67,44 @@ class Settings(BaseSettings):
     attendance_system_base_url: str = Field(default="", alias="ATTENDANCE_SYSTEM_BASE_URL")
     attendance_system_api_key: str = Field(default="", alias="ATTENDANCE_SYSTEM_API_KEY")
     shopify_shop_domain: str = Field(default="", alias="SHOPIFY_SHOP_DOMAIN")
-    shopify_access_token: str = Field(default="", alias="SHOPIFY_ACCESS_TOKEN")
+    # SHOPIFY_ADMIN_API_TOKEN を正規キー、旧 SHOPIFY_ACCESS_TOKEN もフォールバック
+    # で許容（settings.shopify_access_token プロパティ側で解決）。
+    shopify_access_token_raw: str = Field(
+        default="", alias="SHOPIFY_ADMIN_API_TOKEN"
+    )
+    shopify_access_token_legacy: str = Field(
+        default="", alias="SHOPIFY_ACCESS_TOKEN"
+    )
+    shopify_api_version: str = Field(default="2026-01", alias="SHOPIFY_API_VERSION")
+    shopify_komoju_fee_rate: float = Field(
+        default=0.036, alias="SHOPIFY_KOMOJU_FEE_RATE"
+    )
+    # shopify-sales が使う freee 勘定科目（環境差分対応のため env で上書き可、
+    # 未指定なら freee API から「売掛金/売上高/支払手数料」を name で引く）
+    shopify_sales_account_receivable_id: int = Field(
+        default=0, alias="SHOPIFY_SALES_ACCOUNT_RECEIVABLE_ID"
+    )
+    shopify_sales_account_sales_id: int = Field(
+        default=0, alias="SHOPIFY_SALES_ACCOUNT_SALES_ID"
+    )
+    shopify_sales_account_commission_id: int = Field(
+        default=0, alias="SHOPIFY_SALES_ACCOUNT_COMMISSION_ID"
+    )
+    # 軽減税率8%売上(税込) / 対象外 / 税区分なし
+    shopify_sales_tax_code_sales_reduced_8: int = Field(
+        default=156, alias="SHOPIFY_SALES_TAX_CODE_SALES_REDUCED_8"
+    )
+    shopify_sales_tax_code_out_of_scope: int = Field(
+        default=2, alias="SHOPIFY_SALES_TAX_CODE_OUT_OF_SCOPE"
+    )
+    shopify_sales_tax_code_none: int = Field(
+        default=0, alias="SHOPIFY_SALES_TAX_CODE_NONE"
+    )
+
+    @property
+    def shopify_access_token(self) -> str:
+        """SHOPIFY_ADMIN_API_TOKEN が正規、旧 SHOPIFY_ACCESS_TOKEN も後方互換で許容。"""
+        return self.shopify_access_token_raw or self.shopify_access_token_legacy
 
     # HRMOS（勤怠 CSV 取得元）
     hrmos_login_url: str = Field(
@@ -156,6 +193,27 @@ class Settings(BaseSettings):
         if "," not in raw:
             return ""
         return raw.split(",", 1)[1].strip()
+
+    def shopify_partner(self, slug: str) -> tuple[int, str] | None:
+        """`SHOPIFY_SALES_PARTNER_{SLUG}=<id>,<name>` から (partner_id, name) を取り出す。
+
+        未設定なら None。slug は大文字小文字無視、`-`/` ` は `_` に正規化する。
+        例: shopify_partner("shopify_payments") → (123456, "Shopify Payments")
+        """
+        key = f"SHOPIFY_SALES_PARTNER_{slug.upper().replace('-', '_').replace(' ', '_')}"
+        raw = os.environ.get(key, "").strip()
+        if not raw or raw.startswith("__") or raw.endswith("__"):
+            return None
+        if "," not in raw:
+            raise ValueError(
+                f"{key} は '<partner_id>,<display_name>' 形式で指定してください: {raw!r}"
+            )
+        id_str, name = raw.split(",", 1)
+        try:
+            pid = int(id_str.strip())
+        except ValueError as e:
+            raise ValueError(f"{key} の partner_id が整数ではありません: {id_str!r}") from e
+        return pid, name.strip()
 
     def list_vendors(self) -> dict[str, str]:
         """`VENDOR_MAP_{SLUG}={partner_id},{display_name}` から `{slug: display_name}` を返す。

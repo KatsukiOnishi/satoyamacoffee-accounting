@@ -22,6 +22,8 @@ accounting --help              # コマンド一覧
 accounting ping --dry-run      # 動作確認（共通基盤のヘルスチェック）
 accounting list-accounts       # freee 勘定科目一覧
 accounting sync-hrmos --month 2026-04 --dry-run    # HRMOS → shifts 勤怠取込（dry-run）
+accounting shopify-sales preview --month 2026-04   # Shopify 月次売上 集計プレビュー
+accounting shopify-sales run --month 2026-04 --no-dry-run  # freee に振替伝票登録
 ```
 
 デフォルトは dry-run。本番実行は `--no-dry-run` を明示する。

@@ -99,10 +99,12 @@ app.add_typer(vendor_invoice_app, name="vendor-invoice")
 from accounting.tasks.ar_reconcile import ar_reconcile_app  # noqa: E402
 from accounting.tasks.auto_classify import auto_classify_app  # noqa: E402
 from accounting.tasks.email_digest import email_digest_app  # noqa: E402
+from accounting.tasks.shopify_sales import shopify_sales_app  # noqa: E402
 
 app.add_typer(ar_reconcile_app, name="ar-reconcile")
 app.add_typer(auto_classify_app, name="auto-classify")
 app.add_typer(email_digest_app, name="email-digest")
+app.add_typer(shopify_sales_app, name="shopify-sales")
 
 
 @journal_rules_app.command("analyze")
