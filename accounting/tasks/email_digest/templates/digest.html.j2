@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>{{ subject }}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Yu Gothic", sans-serif; color: #1f2937; max-width: 720px; margin: 0 auto; padding: 16px; line-height: 1.6; }
+  h1 { font-size: 18px; border-bottom: 2px solid #1f2937; padding-bottom: 4px; }
+  h2 { font-size: 15px; margin-top: 28px; border-left: 4px solid #2563eb; padding-left: 8px; }
+  .meta { color: #6b7280; font-size: 13px; margin-bottom: 8px; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .badge.shadow { background: #fef3c7; color: #92400e; }
+  .badge.production { background: #d1fae5; color: #065f46; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 6px; }
+  th, td { border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; }
+  td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+  td.conf { text-align: right; font-variant-numeric: tabular-nums; }
+  .summary { background: #f9fafb; padding: 8px 12px; border-radius: 4px; }
+  .footer { color: #6b7280; font-size: 12px; margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+  .ok { color: #065f46; }
+  .warn { color: #92400e; }
+  .err { color: #b91c1c; }
+  .empty { color: #9ca3af; font-style: italic; padding: 6px 0; }
+</style>
+</head>
+<body>
+<h1>auto-keiri 週次ダイジェスト</h1>
+<div class="meta">
+  週: <strong>{{ digest.week_start }} (Mon)</strong> 〜 <strong>{{ digest.week_end }} (Sun)</strong>
+  ({{ digest.iso_week }})
+  &nbsp;
+  モード: <span class="badge {{ digest.mode }}">{{ digest.mode }}</span>
+</div>
+
+<div class="summary">
+  ▼ サマリ
+  ・売掛金消込 成功 <strong>{{ digest.ar_reconciled | length }}件</strong>
+  ・自動登録（auto-classify {{ digest.mode }}）
+    {% if digest.mode == 'production' -%}
+    成功 <strong>{{ digest.classify_registered | length }}件</strong>
+    / 要確認 <strong>{{ digest.classify_review_required | length }}件</strong>
+    / スキップ <strong>{{ digest.classify_skipped | length }}件</strong>
+    {%- else -%}
+    判定 <strong>{{ digest.classify_shadow_logged | length }}件</strong>（freee 未書込）
+    {%- endif %}
+  ・要確認合計 <strong>{{ digest.total_review_required }}件</strong>
+</div>
+
+<h2>▼ 売掛金消込（ar-reconcile）</h2>
+
+<div>
+  成功: <strong>{{ digest.ar_reconciled | length }}件</strong>
+  合計 ¥{{ "{:,}".format(digest.ar_reconciled_total) }}
+</div>
+{% if digest.ar_reconciled %}
+<table>
+  <tr><th>入金日</th><th>取引先</th><th class="amount">金額</th><th>請求書発行日</th><th>deal_id</th></tr>
+  {% for r in digest.ar_reconciled %}
+  <tr>
+    <td>{{ r.txn_date }}</td>
+    <td>{{ r.partner_name or '(不明)' }}</td>
+    <td class="amount">¥{{ "{:,}".format(r.amount) }}</td>
+    <td>{{ r.issue_date or '' }}</td>
+    <td>{{ r.deal_id or '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">(該当なし)</div>
+{% endif %}
+
+<div style="margin-top:12px">
+  <span class="warn">ノーマッチ（要確認）:</span> <strong>{{ digest.ar_unmatched | length }}件</strong>
+</div>
+{% if digest.ar_unmatched %}
+<table>
+  <tr><th>入金日</th><th>摘要</th><th class="amount">金額</th></tr>
+  {% for r in digest.ar_unmatched %}
+  <tr>
+    <td>{{ r.txn_date }}</td>
+    <td>{{ r.description or '' }}</td>
+    <td class="amount">¥{{ "{:,}".format(r.amount) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div style="margin-top:12px">
+  <span class="warn">複数マッチ（要確認）:</span> <strong>{{ digest.ar_multiple_matches | length }}件</strong>
+</div>
+{% if digest.ar_multiple_matches %}
+<table>
+  <tr><th>入金日</th><th>摘要</th><th class="amount">金額</th></tr>
+  {% for r in digest.ar_multiple_matches %}
+  <tr>
+    <td>{{ r.txn_date }}</td>
+    <td>{{ r.description or '' }}</td>
+    <td class="amount">¥{{ "{:,}".format(r.amount) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if digest.ar_failed %}
+<div style="margin-top:12px">
+  <span class="err">失敗:</span> <strong>{{ digest.ar_failed | length }}件</strong>
+</div>
+<table>
+  <tr><th>入金日</th><th>摘要</th><th class="amount">金額</th></tr>
+  {% for r in digest.ar_failed %}
+  <tr>
+    <td>{{ r.txn_date }}</td>
+    <td>{{ r.description or '' }}</td>
+    <td class="amount">¥{{ "{:,}".format(r.amount) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>▼ 自動仕訳（auto-classify）モード: {{ digest.mode }}</h2>
+
+{% if digest.mode == 'production' %}
+<div>
+  <span class="ok">自動登録済（高信頼）:</span> <strong>{{ digest.classify_registered | length }}件</strong>
+</div>
+{% if digest.classify_registered %}
+<table>
+  <tr><th>日付</th><th>摘要</th><th class="amount">金額</th><th>→ 勘定科目</th><th>税区分</th><th class="conf">conf</th></tr>
+  {% for r in digest.classify_registered %}
+  <tr>
+    <td>{{ r.date }}</td>
+    <td>{{ r.description }}</td>
+    <td class="amount">{{ "{:,}".format(r.amount) }}</td>
+    <td>{{ r.account_item or '' }}</td>
+    <td>{{ r.tax_code or '' }}</td>
+    <td class="conf">{{ "%.2f"|format(r.confidence) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div style="margin-top:12px">
+  <span class="warn">要確認（中信頼）:</span> <strong>{{ digest.classify_review_required | length }}件</strong>
+</div>
+{% if digest.classify_review_required %}
+<table>
+  <tr><th>日付</th><th>摘要</th><th class="amount">金額</th><th>→ 勘定科目</th><th>税区分</th><th class="conf">conf</th><th>理由</th></tr>
+  {% for r in digest.classify_review_required %}
+  <tr>
+    <td>{{ r.date }}</td>
+    <td>{{ r.description }}</td>
+    <td class="amount">{{ "{:,}".format(r.amount) }}</td>
+    <td>{{ r.account_item or '' }}</td>
+    <td>{{ r.tax_code or '' }}</td>
+    <td class="conf">{{ "%.2f"|format(r.confidence) }}</td>
+    <td>{{ r.reason or '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div style="margin-top:12px">
+  スキップ（低信頼）: {{ digest.classify_skipped | length }}件
+</div>
+
+{% else %}
+{# shadow モード #}
+<div>
+  判定結果（本来は登録予定）: <strong>{{ digest.classify_shadow_logged | length }}件</strong>
+  <span class="meta">— 本番モードならこのうち conf ≥ 0.85 が自動登録、≥ 0.6 が要確認、それ未満がスキップ</span>
+</div>
+{% if digest.classify_shadow_logged %}
+<table>
+  <tr><th>日付</th><th>摘要</th><th class="amount">金額</th><th>→ 勘定科目</th><th>税区分</th><th class="conf">conf</th><th>理由</th></tr>
+  {% for r in digest.classify_shadow_logged %}
+  <tr>
+    <td>{{ r.date }}</td>
+    <td>{{ r.description }}</td>
+    <td class="amount">{{ "{:,}".format(r.amount) }}</td>
+    <td>{{ r.account_item or '' }}</td>
+    <td>{{ r.tax_code or '' }}</td>
+    <td class="conf">{{ "%.2f"|format(r.confidence) }}</td>
+    <td>{{ r.reason or '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">(該当なし)</div>
+{% endif %}
+{% endif %}
+
+{% if digest.classify_failed %}
+<div style="margin-top:12px">
+  <span class="err">エラー:</span> <strong>{{ digest.classify_failed | length }}件</strong>
+</div>
+<table>
+  <tr><th>日付</th><th>摘要</th><th class="amount">金額</th><th>理由</th></tr>
+  {% for r in digest.classify_failed %}
+  <tr>
+    <td>{{ r.date }}</td>
+    <td>{{ r.description }}</td>
+    <td class="amount">{{ "{:,}".format(r.amount) }}</td>
+    <td>{{ r.reason or '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>▼ 次のアクション</h2>
+<ul>
+  <li>freee Web UI で要確認分を確認:
+    <a href="https://secure.freee.co.jp/wallet_txns/stream?registration_status=unreconciled">
+      https://secure.freee.co.jp/wallet_txns/stream
+    </a>
+  </li>
+  <li>個別詳細を CLI で確認: <code>accounting auto-classify list --week {{ digest.iso_week }}</code></li>
+  <li>モード切替: <code>accounting auto-classify set-mode --mode {production|shadow}</code></li>
+</ul>
+
+{% if digest.mode == 'shadow' %}
+<h2>▼ シャドー判定の検証手順</h2>
+<ol>
+  <li>freee Web UI を開く: <a href="https://secure.freee.co.jp/wallet_txns/stream">https://secure.freee.co.jp/wallet_txns/stream</a></li>
+  <li>上記「判定結果」と実際の登録を突き合わせる</li>
+  <li>一致率を測定（目安: 95% 超で本番モードへ切替）</li>
+  <li>切替: <code>accounting auto-classify set-mode --mode production</code></li>
+</ol>
+{% endif %}
+
+<div class="footer">
+  Generated by satoyamacoffee-accounting / auto-keiri.
+</div>
+</body>
+</html>
