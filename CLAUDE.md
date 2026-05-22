@@ -96,6 +96,14 @@ accounting ping --dry-run
 - `accounting vendor-invoice list / apply <id> / reconcile` — 候補一覧・個別承認・振込後の消し込み再試行
 - `accounting auth gmail-init` — Gmail OAuth 初回認可（詳細は `README_vendor_invoice.md`）
 - `accounting sync-hrmos [--month YYYY-MM] [--no-dry-run] [-u USER_ID ...]` — HRMOS から月次勤怠 CSV を取得 → shifts.satoyamacoffee.com の `/api/admin/import-hrmos` に投入
+- `accounting ar-reconcile run [--days 14] [--no-dry-run]` — 未消込入金を freee 未決済請求書に引き当てて消込（仕様書 §5-1、詳細は `README_auto_keiri.md`）
+- `accounting auto-classify run [--days 14] [--no-dry-run] [--limit 50]` — 信頼度付き自動仕訳。shadow（記録のみ）/ production（>0.85 で自動登録）で動作
+- `accounting auto-classify set-mode --mode {shadow|production} [--reason ...]` — モード切替（system_settings に永続化、切替通知メール送信）
+- `accounting auto-classify get-mode` — 現在のモード・しきい値表示
+- `accounting auto-classify set-threshold --high X --low Y` — 信頼度しきい値の手動チューニング
+- `accounting auto-classify list [--week YYYY-Www] [--limit N]` — 候補一覧
+- `accounting email-digest send [--week YYYY-Www] [--no-dry-run] [--print-html]` — 週次1通ダイジェスト（Resend）
+- `./scripts/run_weekly_auto_keiri.sh` — 上記3本を順に走らせるランナー（scheduled-tasks 用）
 - `pytest` — テスト実行
 
 ## 6. 環境変数
@@ -171,6 +179,38 @@ shifts.satoyamacoffee.com（attendance-system）に投入するタスク。
 - `HRMOS_EXCLUDE_USER_IDS` にテストアカウント・退職者の user_id をカンマ区切りで設定（現状: `5,6`）
 - shifts 側 `.env`（Vercel 環境変数）にも同値の `ADMIN_API_KEY` を設定
 - shifts のスタッフマスタに HRMOS の社員番号が登録されていることが前提（未登録なら skipped に出る）
+
+## 8c. auto-keiri 週次バッチ（ar-reconcile / auto-classify / email-digest）
+
+freee「自動で経理 > まとめて入力 > 未処理」の wallet_txn を可能な限り自動で
+処理する 3 タスク。詳細は `README_auto_keiri.md` および
+`/Users/katsuki/Documents/Claude/Projects/月次決算自動化プロジェクト/auto-keiri_仕様書_for_Claude_Code.md`。
+
+- **ar-reconcile** (`accounting/tasks/ar_reconcile/`)
+  - 未紐付の入金 wallet_txn を、freee 未決済売上 deal に金額＋取引先一致で引き当てて消込
+  - 消込 API: `POST /api/1/deals/{id}/payments`（`accounting/connectors/freee.py:create_payment_for_deal`）
+  - 冪等性キー: `ar-reconcile:wallet_txn:{wallet_txn_id}`
+  - 結果テーブル: `ar_reconcile_candidates`
+
+- **auto-classify** (`accounting/tasks/auto_classify/`)
+  - 未紐付 wallet_txn 全件を Claude（`claude-sonnet-4-6`）で勘定科目・税区分・取引先判定
+  - 構造化出力は `accounting/connectors/anthropic_classifier.py`（tools 強制呼び出し）
+  - モード: `system_settings.auto_classify_mode` で `shadow` / `production` 切替
+  - 信頼度しきい値: `auto_classify_threshold_high` (既定 0.85) / `_low` (既定 0.6)
+  - 冪等性キー: `auto-classify:wallet_txn:{wallet_txn_id}`
+  - 結果テーブル: `auto_classify_candidates`
+  - 除外: 個人名カナ振込・百貨店・公庫・振込手数料・銀行利息
+
+- **email-digest** (`accounting/tasks/email_digest/`)
+  - 直近 7 日の ar-reconcile + auto-classify 結果を Jinja2 HTML テンプレ
+    （`templates/digest.html.j2`）で 1 通にまとめて Resend 送信
+  - 件名プレフィックス: `[さとやま経理]`
+  - 送信ログ: `notification_log` テーブル
+
+DB スキーマは SQLAlchemy 側で完結（`accounting/core/auto_keiri.py`）。初期値投入は
+`init_db()` 内の `ensure_initial_settings()` が冪等に行う。
+
+ランナー: `./scripts/run_weekly_auto_keiri.sh`（scheduled-tasks から毎週月曜 09:00 JST 想定）。
 
 ## 9. 他リポジトリとの関係
 
