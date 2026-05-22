@@ -194,12 +194,16 @@ class FreeeClient:
         start_issue_date: str,
         end_issue_date: str,
         page_size: int = 100,
+        deal_type: str | None = None,
+        status: str | None = None,
     ) -> list[dict[str, Any]]:
         """確定済み取引を期間指定で全件取得（自動ページング）。
 
         Args:
             start_issue_date / end_issue_date: YYYY-MM-DD
             page_size: 1ページの件数（freee 上限 100）
+            deal_type: 'income' or 'expense' で絞り込む（None なら全種）
+            status: 'settled' or 'unsettled' で絞り込む（None なら全状態）
 
         Returns: 全 deals のフラットリスト（details 込み）
         """
@@ -207,7 +211,7 @@ class FreeeClient:
         all_deals: list[dict[str, Any]] = []
         offset = 0
         while True:
-            params = {
+            params: dict[str, Any] = {
                 "company_id": self.company_id,
                 "start_issue_date": start_issue_date,
                 "end_issue_date": end_issue_date,
@@ -215,6 +219,10 @@ class FreeeClient:
                 "offset": offset,
                 "accruals": "with",
             }
+            if deal_type:
+                params["type"] = deal_type
+            if status:
+                params["status"] = status
             res = self._request("GET", url, params=params)
             res.raise_for_status()
             chunk = res.json().get("deals", [])
@@ -224,6 +232,8 @@ class FreeeClient:
                 offset=offset,
                 returned=len(chunk),
                 total=len(all_deals),
+                deal_type=deal_type,
+                status=status,
             )
             if len(chunk) < page_size:
                 break
@@ -274,12 +284,15 @@ class FreeeClient:
         walletable_id: int | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        entry_side: str | None = None,
         page_size: int = 100,
     ) -> list[dict[str, Any]]:
         """口座明細を取得（ページング自動処理）。
 
         walletable_type と walletable_id は同時指定が必須（freee 仕様）。
         指定しない場合は事業所全口座を対象とする。
+        `entry_side` は 'income' / 'expense' で wallet_txn を絞り込む。
+        freee API も同 param を受けるが、後方互換のためクライアント側でも再フィルタする。
         """
         url = f"{self.base_url}/api/1/wallet_txns"
         all_txns: list[dict[str, Any]] = []
@@ -297,6 +310,8 @@ class FreeeClient:
                 params["start_date"] = start_date
             if end_date:
                 params["end_date"] = end_date
+            if entry_side:
+                params["entry_side"] = entry_side
             res = self._request("GET", url, params=params)
             res.raise_for_status()
             chunk = res.json().get("wallet_txns", [])
@@ -304,7 +319,72 @@ class FreeeClient:
             if len(chunk) < page_size:
                 break
             offset += page_size
+        if entry_side:
+            # クライアント側でも保険として再フィルタ
+            all_txns = [t for t in all_txns if t.get("entry_side") == entry_side]
         return all_txns
+
+    def create_payment_for_deal(
+        self,
+        *,
+        deal_id: int,
+        payment_date: str,
+        from_walletable_type: str,
+        from_walletable_id: int,
+        amount: int,
+        external_id: str,
+        task: str,
+    ) -> dict[str, Any]:
+        """未決済取引に支払いを追加して消し込む。
+
+        freee API: POST /api/1/deals/{id}/payments
+        Body: { date, from_walletable_type, from_walletable_id, amount, company_id }
+
+        dry-run なら payload ログ出力のみ。
+        """
+        if is_dry_run():
+            logger.info(
+                "freee.payment.dry_run",
+                task=task,
+                external_id=external_id,
+                deal_id=deal_id,
+                payment_date=payment_date,
+                from_walletable_type=from_walletable_type,
+                from_walletable_id=from_walletable_id,
+                amount=amount,
+            )
+            return {"dry_run": True, "external_id": external_id}
+
+        url = f"{self.base_url}/api/1/deals/{int(deal_id)}/payments"
+        body = {
+            "company_id": int(self.company_id) if self.company_id else 0,
+            "date": payment_date,
+            "from_walletable_type": from_walletable_type,
+            "from_walletable_id": int(from_walletable_id),
+            "amount": int(amount),
+        }
+        res = self._request("POST", url, json=body)
+        if not res.is_success:
+            logger.error(
+                "freee.payment.api_error",
+                task=task,
+                external_id=external_id,
+                deal_id=deal_id,
+                status=res.status_code,
+                response_body=res.text[:1000],
+                payload=body,
+            )
+            res.raise_for_status()
+        data = res.json()
+        payment_id = (data.get("payment") or {}).get("id") or data.get("id")
+        logger.info(
+            "freee.payment.created",
+            task=task,
+            external_id=external_id,
+            deal_id=deal_id,
+            payment_id=payment_id,
+        )
+        return {"payment_id": payment_id, "raw": data, "external_id": external_id}
 
     def list_user_matchers(self, *, page_size: int = 100) -> list[dict[str, Any]]:
         """自動仕訳ルール一覧（自動ページング、全 act 対象）。"""
