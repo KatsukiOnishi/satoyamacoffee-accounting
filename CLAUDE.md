@@ -180,6 +180,46 @@ shifts.satoyamacoffee.com（attendance-system）に投入するタスク。
 - shifts 側 `.env`（Vercel 環境変数）にも同値の `ADMIN_API_KEY` を設定
 - shifts のスタッフマスタに HRMOS の社員番号が登録されていることが前提（未登録なら skipped に出る）
 
+## 8c. accounting serve（Web UI）の常駐運用
+
+`accounting serve` はローカル FastAPI + Jinja2 のダッシュボード。タスクの実行・プレビュー・freee 登録などをブラウザから操作できる。**Mac ログイン時から launchd で常駐起動**しているため、毎回ターミナルから起動する必要はない。
+
+### 起動経路
+- `samples/com.satoyamacoffee.accounting-serve.plist` を `~/Library/LaunchAgents/` に配置済み
+- `KeepAlive=true` でクラッシュ時も自動復活、`RunAtLoad=true` で Mac ログイン直後に起動
+- ログ: `logs/launchd-accounting-serve.log` / `.err.log`
+
+### 認証
+- `.env` の `ACCOUNTING_WEB_TOKEN` を読んで固定トークンとして使う。空のときは起動毎にランダム生成（再起動でブックマーク URL が無効になる旧挙動）。
+- ブックマーク URL: `http://localhost:8080/?token=<ACCOUNTING_WEB_TOKEN>`
+- 初回アクセスで `accounting_token` Cookie（24時間有効）が設定され、以降は `?token=` 無しでも入れる
+- iPhone 等の同一 LAN からも `http://<MacのLAN IP>:8080/?token=<...>` でアクセス可
+
+### 再起動方法
+- `launchctl kickstart -k gui/$(id -u)/com.satoyamacoffee.accounting-serve`
+- コード変更後はこれで反映
+
+## 8d. payroll タスクの登録 UI（3パターン）
+
+`/tasks/payroll/preview` 画面では同じ月の rows に対して、ユースケース別に3パターンの freee 登録が可能。
+
+| パターン | 操作 | 用途 |
+|---|---|---|
+| 行ごとの「この人だけ登録」 | テーブル右端ボタン | 1人だけ後追い・修正登録 |
+| チェックボックス → 「選択した N 名を登録」 | 行左端のチェック → 下の青ボタン | 数名まとめて承認 |
+| 「全員登録（N 件）」 | 下の緑ボタン | 月末締めで全員一括 |
+
+### サーバ側仕様
+- 3パターン全てが `POST /tasks/payroll/register` を叩く
+- 「選択した N 名」モードのみ `staff_ids: list[str]` Form パラメータを付与、サーバ側で `bundle["rows"]` を staff_id で絞ってから処理
+- 行ごとモードは `payload_bundle` の `rows` がその社員1人分だけ入った JSON（preview 時に `single_bundle_json` として各 entry に埋め込み済み）
+- 冪等性により既登録の社員はチェックボックス自体が出ず、ボタンも非表示
+
+### 製造原価科目の取り扱い
+- shifts スタッフマスタの `department` が**厳密に "製造"** の社員だけ `[製]給料手当` / `[製]旅費交通費` に振る
+- 掛け持ち表記（"製造・店舗"）・空欄・その他値は販管費の `給料手当` / `旅費交通費` に振る
+- preview → register のシリアライズで `bundle["account_ids"]` に `salary_mfg` / `transport_mfg` を必ず含めること（過去にここが落ちて「[製]給料手当 が見つかりません」エラーが出たバグあり）
+
 ## 8c. auto-keiri 週次バッチ（ar-reconcile / auto-classify / email-digest）
 
 freee「自動で経理 > まとめて入力 > 未処理」の wallet_txn を可能な限り自動で
