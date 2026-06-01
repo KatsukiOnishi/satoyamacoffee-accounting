@@ -133,6 +133,46 @@ async def preview(
         "income_tax": 0, "resident_tax": 0, "social_ins": 0,
         "net_pay": 0,
     }
+    bundle_account_ids = {
+        "salary": ids.salary,
+        "transport": ids.transport,
+        "deposit": ids.deposit,
+        "payables": ids.payables,
+        "salary_mfg": ids.salary_mfg,
+        "transport_mfg": ids.transport_mfg,
+    }
+
+    def _raw(r: SalaryRow) -> dict:
+        return {
+            "staff_id": r.staff_id,
+            "employee_no": r.employee_no,
+            "last_name": r.last_name,
+            "first_name": r.first_name,
+            "department": r.department,
+            "work_days": r.work_days,
+            "work_min": r.work_min,
+            "base_pay": r.base_pay,
+            "transport_pay": r.transport_pay,
+            "income_tax": r.income_tax,
+            "resident_tax": r.resident_tax,
+            "social_ins": r.social_ins,
+            "total_pay": r.total_pay,
+            "total_deduct": r.total_deduct,
+            "net_pay": r.net_pay,
+        }
+
+    def _single_bundle_json(r: SalaryRow) -> str:
+        return json.dumps(
+            {
+                "month": month,
+                "company_id": company_id,
+                "issue_date": issue_date.isoformat(),
+                "account_ids": bundle_account_ids,
+                "rows": [_raw(r)],
+            },
+            ensure_ascii=False,
+        )
+
     for r in rows:
         ext_id = build_external_id(year, mon, r.staff_id)
         try:
@@ -149,6 +189,7 @@ async def preview(
                 "payload": None,
                 "already_registered": False,
                 "error": str(e),
+                "single_bundle_json": None,
             })
             continue
         entries.append({
@@ -157,6 +198,7 @@ async def preview(
             "payload": payload,
             "already_registered": is_executed(TASK_NAME, ext_id),
             "error": None,
+            "single_bundle_json": _single_bundle_json(r),
         })
         totals["base_pay"] += r.base_pay
         totals["transport_pay"] += r.transport_pay
@@ -170,12 +212,7 @@ async def preview(
         "month": month,
         "company_id": company_id,
         "issue_date": issue_date.isoformat(),
-        "account_ids": {
-            "salary": ids.salary,
-            "transport": ids.transport,
-            "deposit": ids.deposit,
-            "payables": ids.payables,
-        },
+        "account_ids": bundle_account_ids,
         "rows": [
             {
                 "staff_id": r.staff_id,
@@ -218,7 +255,14 @@ async def register(
     request: Request,
     payload_bundle: str = Form(...),
     dry_run: str | None = Form(default=None),
+    staff_ids: list[str] | None = Form(default=None),
 ) -> HTMLResponse:
+    """rows をまとめて freee に登録する。
+
+    staff_ids が指定されていれば、payload_bundle["rows"] のうち staff_id が
+    マッチする行だけを処理する（チェックボックス選択時 or 1人だけ登録時）。
+    未指定なら rows 全件を処理する（全員一括登録時）。
+    """
     init_db()
     is_dry = dry_run is not None
     try:
@@ -231,6 +275,18 @@ async def register(
             status_code=400,
         )
 
+    # 選択モード: bundle["rows"] のうち staff_ids に含まれるものだけを残す
+    if staff_ids:
+        wanted = set(staff_ids)
+        bundle["rows"] = [r for r in bundle["rows"] if r["staff_id"] in wanted]
+        if not bundle["rows"]:
+            return templates.TemplateResponse(
+                request,
+                "error.html",
+                {"message": "選択された社員が rows に1人も含まれていません。", "dry_run": is_dry},
+                status_code=400,
+            )
+
     month = bundle["month"]
     year, mon = _parse_month(month)
     issue_date = date.fromisoformat(bundle["issue_date"])
@@ -239,11 +295,21 @@ async def register(
 
     from accounting.tasks.payroll import AccountIdSet
 
+    def _int_or_none(v: object) -> int | None:
+        if v is None or v == "":
+            return None
+        try:
+            return int(v)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
     ids = AccountIdSet(
         salary=int(aids["salary"]),
         transport=int(aids["transport"]),
         deposit=int(aids["deposit"]),
         payables=int(aids["payables"]),
+        salary_mfg=_int_or_none(aids.get("salary_mfg")),
+        transport_mfg=_int_or_none(aids.get("transport_mfg")),
     )
 
     run_id = generate_run_id("payroll")

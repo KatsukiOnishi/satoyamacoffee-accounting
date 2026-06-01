@@ -540,7 +540,10 @@ class FreeeClient:
         """振替伝票（manual_journal）を作成する。dry-run なら payload ログ出力のみ。
 
         freee API: POST /api/1/manual_journals
-        Body は `{"manual_journal": payload}` で wrap する（register_journal と同様の規約）。
+        Body はラップせず flat に payload を送る（freee 仕様、create_deal と同じ）。
+        旧コードは `{"manual_journal": payload}` で wrap していたが、freee 側で
+        `"company_id, details, issue_date が指定されていません"` の 400 を返すバグの
+        原因となっていた。
 
         Args:
             payload: manual_journal 本体（issue_date / company_id / details ほか）
@@ -557,8 +560,7 @@ class FreeeClient:
             return {"dry_run": True, "external_id": external_id}
 
         url = f"{self.base_url}/api/1/manual_journals"
-        body = {"manual_journal": payload}
-        res = self._request("POST", url, json=body)
+        res = self._request("POST", url, json=payload)
         if not res.is_success:
             logger.error(
                 "freee.manual_journal.api_error",
@@ -570,7 +572,7 @@ class FreeeClient:
             )
             res.raise_for_status()
         data = res.json()
-        manual_journal_id = data.get("manual_journal", {}).get("id")
+        manual_journal_id = (data.get("manual_journal") or {}).get("id") or data.get("id")
         logger.info(
             "freee.manual_journal.created",
             task=task,

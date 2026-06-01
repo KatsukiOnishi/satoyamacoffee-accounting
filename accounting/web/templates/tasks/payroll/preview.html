@@ -12,6 +12,9 @@
   <table class="w-full text-sm">
     <thead class="text-xs text-stone-500 bg-stone-50 border-b border-stone-200">
       <tr>
+        <th class="text-center px-2 py-2">
+          <input type="checkbox" id="master-check" class="rounded" title="未登録の全員を選択／解除">
+        </th>
         <th class="text-left py-2 px-3">社員</th>
         <th class="text-right">基本給</th>
         <th class="text-right">交通費</th>
@@ -25,6 +28,13 @@
     <tbody>
       {% for e in entries %}
         <tr class="border-b border-stone-100 last:border-0">
+          <td class="text-center px-2">
+            {% if not e.error and not e.already_registered and e.single_bundle_json %}
+              <input type="checkbox" class="row-check rounded"
+                     name="staff_ids" value="{{ e.row.staff_id }}"
+                     form="bulk-form">
+            {% endif %}
+          </td>
           <td class="py-1.5 px-3">
             <div>{{ e.row.last_name }} {{ e.row.first_name }}</div>
             <div class="text-xs text-stone-400 font-mono">#{{ e.row.employee_no }}</div>
@@ -35,18 +45,28 @@
           <td class="text-right font-mono text-stone-500">{{ "{:,}".format(e.row.resident_tax) }}</td>
           <td class="text-right font-mono text-stone-500">{{ "{:,}".format(e.row.social_ins) }}</td>
           <td class="text-right font-mono font-medium">{{ "{:,}".format(e.row.net_pay) }}</td>
-          <td class="pl-3 text-xs">
+          <td class="pl-3 text-xs whitespace-nowrap">
             {% if e.error %}
               <span class="text-rose-700">{{ e.error }}</span>
             {% elif e.already_registered %}
               <span class="text-stone-500">登録済</span>
-            {% else %}
-              <span class="text-emerald-700">未登録</span>
+            {% elif e.single_bundle_json %}
+              <span class="text-emerald-700 mr-2">未登録</span>
+              <form action="/tasks/payroll/register" method="post" class="inline">
+                <input type="hidden" name="payload_bundle" value='{{ e.single_bundle_json|e }}'>
+                {% if dry_run %}<input type="hidden" name="dry_run" value="true">{% endif %}
+                <button type="submit"
+                        class="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-500"
+                        onclick="return confirm('{{ e.row.last_name }} {{ e.row.first_name }} さん 1名だけ freee に登録します。よろしいですか？')">
+                  この人だけ登録
+                </button>
+              </form>
             {% endif %}
           </td>
         </tr>
       {% endfor %}
       <tr class="bg-stone-50 font-medium">
+        <td></td>
         <td class="py-2 px-3">合計</td>
         <td class="text-right font-mono">{{ "{:,}".format(totals.base_pay) }}</td>
         <td class="text-right font-mono">{{ "{:,}".format(totals.transport_pay) }}</td>
@@ -93,20 +113,98 @@
   </div>
 </details>
 
-<form action="/tasks/payroll/register" method="post"
-      class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 flex flex-col gap-4">
-  <input type="hidden" name="payload_bundle" value='{{ payload_bundle_json|e }}'>
+<div class="bg-white rounded-2xl shadow-sm border border-stone-200 p-5 space-y-4">
+  <div class="text-sm text-stone-700">
+    登録方法は3パターン：
+    <span class="text-emerald-700 font-medium">行ごとの「この人だけ登録」</span> /
+    <span class="text-emerald-700 font-medium">チェックボックス選択 → 下の「選択した N 名を登録」</span> /
+    <span class="text-emerald-700 font-medium">下の「全員登録」</span>
+  </div>
 
-  <label class="flex items-center gap-2 text-sm">
-    <input type="checkbox" name="dry_run" value="true" {% if dry_run %}checked{% endif %} class="rounded">
+  <div class="flex flex-wrap gap-3 items-stretch">
+    <!-- 選択モード：staff_ids チェックボックスを集めて送信 -->
+    <form id="bulk-form" action="/tasks/payroll/register" method="post"
+          class="flex items-center gap-2"
+          onsubmit="return confirmBulk(event);">
+      <input type="hidden" name="payload_bundle" value='{{ payload_bundle_json|e }}'>
+      {% if dry_run %}<input type="hidden" name="dry_run" value="true">{% endif %}
+      <button type="submit" id="bulk-btn"
+              class="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled>
+        選択した <span id="selected-count">0</span> 名を登録
+      </button>
+    </form>
+
+    <!-- 全員一括 -->
+    <form action="/tasks/payroll/register" method="post" class="flex items-center gap-2"
+          onsubmit="return confirm('未登録の全員を freee に登録します。よろしいですか？');">
+      <input type="hidden" name="payload_bundle" value='{{ payload_bundle_json|e }}'>
+      {% if dry_run %}<input type="hidden" name="dry_run" value="true">{% endif %}
+      <button type="submit"
+              class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
+        全員登録（{{ entries|length }} 件）
+      </button>
+    </form>
+
+    <a href="/tasks/payroll" class="px-4 py-2 rounded-lg border border-stone-300 text-sm text-stone-600 hover:bg-stone-100 self-center">
+      やり直す
+    </a>
+  </div>
+
+  <label class="flex items-center gap-2 text-sm pt-2 border-t border-stone-100">
+    <!-- dry-run チェック: 両フォームの hidden に同期 -->
+    <input type="checkbox" id="dry-run-toggle" {% if dry_run %}checked{% endif %} class="rounded">
     <span>dry-run（freee に登録せずプレビューのみ）</span>
   </label>
+</div>
 
-  <div class="flex gap-3">
-    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
-      この内容で freee に登録（{{ entries|length }} 件）
-    </button>
-    <a href="/tasks/payroll" class="px-4 py-2 rounded-lg border border-stone-300 text-sm text-stone-600 hover:bg-stone-100">やり直す</a>
-  </div>
-</form>
+<script>
+(() => {
+  const checks = document.querySelectorAll('.row-check');
+  const master = document.getElementById('master-check');
+  const countEl = document.getElementById('selected-count');
+  const bulkBtn = document.getElementById('bulk-btn');
+
+  const updateCount = () => {
+    const n = [...checks].filter(c => c.checked).length;
+    countEl.textContent = n;
+    bulkBtn.disabled = n === 0;
+  };
+  checks.forEach(c => c.addEventListener('change', updateCount));
+  master?.addEventListener('change', e => {
+    checks.forEach(c => c.checked = e.target.checked);
+    updateCount();
+  });
+  updateCount();
+
+  // dry-run トグル: 全フォームに hidden を入れ直す
+  const dryToggle = document.getElementById('dry-run-toggle');
+  const forms = document.querySelectorAll('form[action="/tasks/payroll/register"]');
+  dryToggle.addEventListener('change', () => {
+    forms.forEach(f => {
+      let h = f.querySelector('input[name="dry_run"]');
+      if (dryToggle.checked) {
+        if (!h) {
+          h = document.createElement('input');
+          h.type = 'hidden';
+          h.name = 'dry_run';
+          h.value = 'true';
+          f.appendChild(h);
+        }
+      } else if (h) {
+        h.remove();
+      }
+    });
+  });
+
+  window.confirmBulk = (e) => {
+    const n = [...checks].filter(c => c.checked).length;
+    if (n === 0) {
+      e.preventDefault();
+      return false;
+    }
+    return confirm(`選択した ${n} 名を freee に登録します。よろしいですか？`);
+  };
+})();
+</script>
 {% endblock %}
